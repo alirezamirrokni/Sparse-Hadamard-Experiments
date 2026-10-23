@@ -18,7 +18,14 @@ LANES = {
     "hpo": ["hpo"],
     "other": ["figure3", "robust", "scaling"],
 }
-BATCHES = {"hpo": 8, "robust": 100, "scaling": 20}
+BATCHES = {
+    "phase": 5000,
+    "phase_sparse": 5000,
+    "figure3": 5000,
+    "hpo": 8,
+    "robust": 100,
+    "scaling": 20,
+}
 
 
 def timestamp():
@@ -94,8 +101,14 @@ def worker(lane):
         ]
         os.sched_setaffinity(0, {cpu})
     os.nice(5)
-    state = {"lane": lane, "started_at": timestamp(), "status": "running"}
     state_path = SESSIONS / f"{lane}.json"
+    previous = json.loads(state_path.read_text()) if state_path.exists() else {}
+    state = {
+        "lane": lane,
+        "started_at": previous.get("started_at", timestamp()),
+        "resumed_at": timestamp(),
+        "status": "running",
+    }
     save(state_path, state)
     try:
         with (SESSIONS / f"{lane}.log").open("a", buffering=1) as log:
