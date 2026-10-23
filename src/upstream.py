@@ -1,4 +1,5 @@
 import ast
+from functools import lru_cache
 import hashlib
 import itertools
 import json
@@ -50,6 +51,7 @@ def checked_source(directory, name):
     return data.decode()
 
 
+@lru_cache(maxsize=512)
 def graph_edges(directory, dimension, edge_count, snapshot):
     def read_edges(number):
         result = {}
@@ -91,7 +93,7 @@ def graph_edges(directory, dimension, edge_count, snapshot):
     if edge_count >= 0:
         chosen = random.Random(1).sample(list(retained), edge_count)
         retained = {edge: 1 for edge in chosen}
-    return sorted(retained)
+    return tuple(sorted(retained))
 
 
 def execute_definitions(source, namespace):

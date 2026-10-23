@@ -2,9 +2,10 @@
 __pycache__/
 *.pyc
 *.egg-info/
+.ruff_cache/
 build/
 dist/
-outputs/
+results/
 data/
 *.sqlite*
 .DS_Store

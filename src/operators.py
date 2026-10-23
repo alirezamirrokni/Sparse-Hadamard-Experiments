@@ -11,21 +11,6 @@ from .algebra import (
 )
 
 
-class DenseOperator(LinearOperator):
-    def __init__(self, matrix):
-        self.matrix = np.asarray(matrix, dtype=float)
-        super().__init__(dtype=self.matrix.dtype, shape=self.matrix.shape)
-
-    def _matvec(self, vector):
-        return self.matrix @ vector
-
-    def _rmatvec(self, vector):
-        return self.matrix.T @ vector
-
-    def columns(self, indices):
-        return self.matrix[:, indices]
-
-
 class CosetOperator(LinearOperator):
     def __init__(self, points, prefixes, prefix_bits, extension_bits):
         self.points = np.asarray(points, dtype=np.uint64)

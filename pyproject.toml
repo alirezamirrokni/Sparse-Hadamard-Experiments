@@ -9,11 +9,9 @@ description = "Resumable experiments for prefix-based sparse Walsh-Hadamard reco
 requires-python = ">=3.11"
 dependencies = ["numpy>=2.0,<3", "scipy>=1.14,<2", "matplotlib>=3.9,<4", "scikit-learn>=1.5,<2", "numba>=0.61,<1", "threadpoolctl>=3.5,<4", "galois>=0.4.6,<0.5"]
 
-[project.scripts]
-shtbench = "shtbench.cli:main"
-
 [tool.setuptools.packages.find]
-include = ["shtbench*"]
+where = ["."]
+include = ["src*"]
 
 [tool.setuptools.package-data]
-shtbench = ["upstream_manifest.json"]
+src = ["upstream_manifest.json"]

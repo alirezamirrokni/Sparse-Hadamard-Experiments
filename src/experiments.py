@@ -4,15 +4,13 @@ import math
 import time
 
 import numpy as np
-from scipy.fft import dct
 from sklearn.linear_model import Lasso
 
 from .algebra import warmup
 from .hpo import run_hpo
-from .operators import DenseOperator, DegreeOperator, materialize
+from .operators import DegreeOperator, materialize
 from .recovery import coefficient_error, global_recover, prefix_recover, sparse_result
 from .signals import graph_signal, random_signal, tail_bound
-from .solvers import solve
 from .storage import BudgetExceeded, Oracle, Store, digest
 from .upstream import graph_edges, swht_recover
 
@@ -39,7 +37,7 @@ def jobs(config):
     for experiment in config["experiments"]:
         kind = experiment["kind"]
         repetitions = experiment.get("trials", config.get("trials", 20))
-        if kind in {"phase", "reference"}:
+        if kind == "phase":
             for size, delta, rho, distribution in itertools.product(
                 experiment["sizes"],
                 experiment["deltas"],
@@ -66,8 +64,6 @@ def jobs(config):
                         16,
                     )
                     for method in experiment.get("methods", methods):
-                        if kind == "reference" and method.startswith("prefix"):
-                            continue
                         for parameters in expand_grid(
                             experiment.get("parameter_grids", {}).get(method, {})
                         ):
@@ -181,50 +177,6 @@ def jobs(config):
             raise ValueError(f"Unknown experiment kind {kind}")
 
 
-def reference_trial(spec, settings, seed, store, key):
-    rng = np.random.default_rng(seed)
-    size = spec["size"]
-    rows = min(size, max(1, round(size * spec["delta"])))
-    sparsity = min(rows, max(1, round(rows * spec["rho"])))
-    vector = np.zeros(size)
-    support = rng.choice(size, sparsity, replace=False)
-    distribution = spec["distribution"]
-    vector[support] = (
-        rng.normal(size=sparsity)
-        if distribution == "gaussian"
-        else rng.choice([-1.0, 1.0], sparsity)
-    )
-    ensemble = settings.get("ensemble", "dct")
-    if ensemble == "gaussian":
-        matrix = rng.normal(size=(rows, size)) / np.sqrt(rows)
-    elif ensemble == "dct":
-        matrix = dct(np.eye(size), type=2, axis=0, norm="ortho")[
-            rng.choice(size, rows, replace=False)
-        ] * np.sqrt(size / rows)
-    else:
-        raise ValueError(f"Unknown reference ensemble {ensemble}")
-    operator = DenseOperator(matrix)
-    started = time.perf_counter()
-    recovered, report = solve(
-        operator, matrix @ vector, settings, store, f"{key}/solver", sparsity
-    )
-    duration = time.perf_counter() - started
-    error = float(np.linalg.norm(recovered - vector) / np.linalg.norm(vector))
-    return {
-        "status": "ok",
-        "success": error <= 1e-6,
-        "relative_error": error,
-        "queries": rows,
-        "sampled_rows": rows,
-        "sparsity": sparsity,
-        "N": size,
-        "algorithm_seconds": duration,
-        "wall_seconds": duration,
-        "solver_report": report,
-        "rounds": 1,
-    }
-
-
 def stobbe_recover(oracle, dimension, edges, settings, store, key, seed):
     rng = np.random.default_rng(seed)
     rows = max(1, int(settings.get("C", 2.5) * math.ceil(edges * math.log2(dimension))))
@@ -274,9 +226,7 @@ def execute(job, database, upstream_directory, implementation):
     started = time.perf_counter()
     oracle = None
     try:
-        if spec["kind"] == "reference":
-            result = reference_trial(spec, settings, seed, store, key)
-        elif spec["kind"] == "hpo":
+        if spec["kind"] == "hpo":
             result = run_hpo(spec, method, settings, store, key, seed, implementation)
         else:
             if spec["kind"].startswith("graph"):

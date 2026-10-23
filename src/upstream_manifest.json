@@ -1,0 +1,38 @@
+{
+  "repository": "andisheh94/Efficiently-Learning-Fourier-Sparse-Set-Functions",
+  "revision": "4c3e161e13062a356afcba1f41d0493b0373336c",
+  "files": [
+    {
+      "path": "code/graphData/1.txt",
+      "git_blob": "4a4d4141adaa806d84549157327abe2dd9729b95"
+    },
+    {
+      "path": "code/graphData/3.txt",
+      "git_blob": "24e0b0aa3ce5b9b023ea2612ed02cc75d48a688f"
+    },
+    {
+      "path": "code/graphData/5.txt",
+      "git_blob": "8c01b5e5d0084946ed802522f50e638c6339931c"
+    },
+    {
+      "path": "code/graphData/7.txt",
+      "git_blob": "8304a501290d6ae1ad848f17a8d99a34a3b2e1d8"
+    },
+    {
+      "path": "code/graphData/9.txt",
+      "git_blob": "8c8c751c2be870c53995c04880d8f39967e08d4b"
+    },
+    {
+      "path": "code/hashing.py",
+      "git_blob": "51bbe11131e975192db4bb64a9a29be250e8ca4a"
+    },
+    {
+      "path": "code/sparseWHT.py",
+      "git_blob": "d9f040ea2daf088105c069e4cba9c425561afdc3"
+    },
+    {
+      "path": "code/utils.py",
+      "git_blob": "406c46c87bd933e131628e941f80322dee0c4ac9"
+    }
+  ]
+}
