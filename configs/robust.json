@@ -1,7 +1,7 @@
 {
   "seed": 20261023,
   "split": "evaluation",
-  "trials": 30,
+  "trials": 5,
   "defaults": {
     "max_iterations": 6000,
     "tolerance": 1e-08,

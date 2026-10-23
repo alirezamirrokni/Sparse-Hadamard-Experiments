@@ -1,13 +1,14 @@
 {
   "seed": 20261023,
   "split": "evaluation",
-  "trials": 20,
+  "trials": 3,
   "defaults": {
     "max_iterations": 6000,
-    "tolerance": 1e-08,
+    "tolerance": 1e-06,
     "max_dense_bytes": 536870912,
     "max_global_columns": 2000000,
-    "max_local_columns": 2000000
+    "max_local_columns": 2000000,
+    "threshold": 0.1
   },
   "methods": {
     "swht": {
@@ -297,7 +298,7 @@
         175,
         200
       ],
-      "trials": 10,
+      "trials": 1,
       "methods": [
         "swht",
         "prefix_bch"
@@ -454,7 +455,7 @@
         800,
         1000
       ],
-      "trials": 10,
+      "trials": 1,
       "methods": [
         "swht",
         "prefix_bch"

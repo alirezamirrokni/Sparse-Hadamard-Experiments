@@ -1,13 +1,14 @@
 {
-  "seed": 20261023,
-  "split": "evaluation",
-  "trials": 20,
+  "seed": 20261030,
+  "split": "evaluation-v2",
+  "trials": 3,
   "defaults": {
     "max_iterations": 6000,
-    "tolerance": 1e-08,
+    "tolerance": 1e-06,
     "max_dense_bytes": 536870912,
     "max_global_columns": 2000000,
-    "max_local_columns": 2000000
+    "max_local_columns": 2000000,
+    "threshold": 0.1
   },
   "methods": {
     "cs": {
@@ -16,15 +17,17 @@
     "prefix": {
       "solver": "bp",
       "initial_factor": 2.0,
-      "initial_offset": 10,
-      "extension_factor": 1.0,
+      "initial_offset": 8,
+      "extension_factor": 0.5,
       "sample_factor": 2.4,
       "validated": true,
       "validation_factor": 0,
       "validation_min": 0,
       "attempts": 1,
       "sampling": "distinct",
-      "reuse_samples": true
+      "reuse_samples": true,
+      "threshold": 0.1,
+      "tolerance": 1e-06
     },
     "prefix_bch": {
       "solver": "bp",

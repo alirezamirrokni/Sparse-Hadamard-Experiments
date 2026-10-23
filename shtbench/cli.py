@@ -122,11 +122,12 @@ def main():
     implementation = source_digest()
     database = args.output / "cache.sqlite"
     store = Store(database)
-    expected = {
-        digest({"job": job, "implementation": implementation})
+    indexed = [
+        (job, digest({"job": job, "implementation": implementation}))
         for index, job in enumerate(expanded)
         if index % args.shards == args.shard
-    }
+    ]
+    expected = {key for job, key in indexed}
     if args.retry_errors:
         for key, value in store.records("result"):
             if key in expected and value["status"] in {
@@ -138,12 +139,14 @@ def main():
             }:
                 with store.db:
                     store.db.execute("DELETE FROM records WHERE key=?", (key,))
-    pending = [
-        job
-        for index, job in enumerate(expanded)
-        if index % args.shards == args.shard
-        and store.get(digest({"job": job, "implementation": implementation})) is None
-    ]
+    finished = {
+        row[0]
+        for row in store.db.execute("SELECT key FROM records WHERE kind='result'")
+    }
+    pending = [job for job, key in indexed if key not in finished]
+    families = list(dict.fromkeys(job["spec"]["kind"] for job in expanded))
+    family_order = {kind: index for index, kind in enumerate(families)}
+    pending.sort(key=lambda job: (family_order[job["spec"]["kind"]], job["trial"]))
     completed = len(expected) - len(pending)
     store.close()
     if args.limit is not None:

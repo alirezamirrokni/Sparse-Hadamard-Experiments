@@ -108,6 +108,88 @@ def solve(operator, response, settings, store=None, key=None, sparsity=None):
                 "Local equality system is infeasible for the retained prefixes"
             )
     row_norm_squared = size / m
+    if (
+        hasattr(operator, "suffix")
+        and settings.get("solver_backend", "compiled") == "compiled"
+    ):
+        from .kernels import basis_pursuit_chunk
+
+        indices = [] if blocks is None else [block[0] for block in blocks]
+        factors = [] if blocks is None else [block[1] for block in blocks]
+        row_order = np.concatenate(indices) if indices else np.empty(0, dtype=np.int64)
+        block_offsets = np.asarray(
+            [0] + list(np.cumsum([len(x) for x in indices])), dtype=np.int64
+        )
+        factor_offsets = np.asarray(
+            [0] + list(np.cumsum([x.size for x in factors])), dtype=np.int64
+        )
+        ranks = np.asarray([x.shape[1] for x in factors], dtype=np.int64)
+        packed = (
+            np.concatenate([x.ravel() for x in factors]) if factors else np.empty(0)
+        )
+        inverse = np.empty(0, dtype=np.int64) if inverse is None else inverse
+        counts = np.empty(0, dtype=np.int64) if counts is None else counts
+        converged = False
+        checkpoint_started = time.perf_counter()
+        while iteration < max_iterations:
+            if time.perf_counter() - started + elapsed > settings.get(
+                "solver_seconds", 1800
+            ):
+                raise TimeoutError("Basis-pursuit solver time limit exceeded")
+            stop = min(max_iterations, (iteration // 100 + 1) * 100)
+            iteration, converged, feasibility = basis_pursuit_chunk(
+                z,
+                dual,
+                response,
+                operator.signs,
+                operator.suffix,
+                operator.width,
+                operator.scale,
+                orthogonal,
+                inverse,
+                counts,
+                row_order,
+                block_offsets,
+                factor_offsets,
+                ranks,
+                packed,
+                iteration,
+                stop,
+                tolerance,
+                settings.get("threshold", 0.1),
+            )
+            if converged:
+                break
+            if (
+                store is not None
+                and key
+                and time.perf_counter() - checkpoint_started
+                >= settings.get("checkpoint_seconds", 2.0)
+            ):
+                store.save_arrays(
+                    key,
+                    z=z,
+                    dual=dual,
+                    iteration=np.array(iteration),
+                    elapsed=np.array(elapsed + time.perf_counter() - started),
+                )
+                checkpoint_started = time.perf_counter()
+            if iteration % 1000 == 0:
+                logging.info(
+                    "solver %s iteration=%d feasibility=%.3g",
+                    key,
+                    iteration,
+                    feasibility,
+                )
+        return z, {
+            "solver": "bp",
+            "backend": "compiled",
+            "iterations": iteration,
+            "converged": converged,
+            "feasibility": float(np.linalg.norm(operator @ z - response)),
+            "seconds": elapsed + time.perf_counter() - started,
+            "resumed_seconds": elapsed,
+        }
     converged = False
     projection_residual = float("inf")
     for iteration in range(iteration, max_iterations):

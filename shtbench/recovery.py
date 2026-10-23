@@ -6,6 +6,7 @@ import numpy as np
 
 from .algebra import bits, characters, integers, random_invertible, top_indices
 from .bch import bch_map
+from .kernels import map_points
 from .operators import CosetOperator, DegreeOperator
 from .solvers import debias, solve
 from .storage import BudgetExceeded
@@ -38,18 +39,35 @@ def coefficient_error(truth, recovered):
 def fresh_points(oracle, query_map, internal, length, count, rng):
     universe = 1 << length
     count = min(count, universe)
-    if universe <= 65536:
+    if count <= 0:
+        return np.empty(0, dtype=np.uint64)
+    if count + oracle.count >= universe // 2:
         candidates = rng.permutation(universe).astype(np.uint64)
-    else:
-        candidates = rng.choice(
-            universe, min(universe, max(count * 2, count + 64)), replace=False
-        ).astype(np.uint64)
-    points = (bits(candidates, internal) @ query_map) % 2
-    packed = np.packbits(points, axis=1, bitorder="little")
-    chosen = [i for i, row in enumerate(packed) if row.tobytes() not in oracle.seen][
-        :count
-    ]
-    return candidates[chosen]
+        points = map_points(candidates, query_map)
+        packed = np.packbits(points, axis=1, bitorder="little")
+        chosen = [
+            int(c)
+            for c, row in zip(candidates, packed)
+            if row.tobytes() not in oracle.seen
+        ]
+        return np.asarray(chosen[:count], dtype=np.uint64)
+    chosen = []
+    visited = set()
+    while len(chosen) < count and len(visited) < universe:
+        batch = min(universe, max(32, 2 * (count - len(chosen))))
+        candidates = rng.integers(0, universe, batch, dtype=np.uint64)
+        packed = np.packbits(
+            map_points(candidates, query_map), axis=1, bitorder="little"
+        )
+        for candidate, row in zip(candidates, packed):
+            candidate = int(candidate)
+            if candidate not in visited:
+                visited.add(candidate)
+                if row.tobytes() not in oracle.seen:
+                    chosen.append(candidate)
+                    if len(chosen) == count:
+                        break
+    return np.asarray(chosen, dtype=np.uint64)
 
 
 def prefix_recover(
@@ -173,9 +191,7 @@ def prefix_recover(
             validation_count = len(validations)
             validation_values = None
             if validation_count:
-                validation_values = oracle(
-                    (bits(validations, internal) @ query_map) % 2
-                )
+                validation_values = oracle(map_points(validations, query_map))
             best = None
             best_residual = float("inf")
             reports = []
@@ -193,7 +209,7 @@ def prefix_recover(
                     rows = local_rng.integers(
                         0, 1 << length, min(desired, 1 << length), dtype=np.uint64
                     )
-                sampled = oracle((bits(rows, internal) @ query_map) % 2)
+                sampled = oracle(map_points(rows, query_map))
                 reused_rows = 0
                 if (
                     settings.get("reuse_samples", True)
@@ -249,7 +265,7 @@ def prefix_recover(
                             refined_rows, current_prefixes, old_length, extension
                         )
                         observed = oracle(
-                            (bits(refined_rows, internal) @ query_map) % 2
+                            map_points(refined_rows, query_map)
                         ) / math.sqrt(group_size)
                         residual = observed - refined_operator @ coarse
                         refinements.append(refined_operator.rmatvec(residual))

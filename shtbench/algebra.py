@@ -1,5 +1,6 @@
 import itertools
 import math
+from functools import lru_cache
 
 import numpy as np
 from numba import njit
@@ -172,7 +173,11 @@ def top_indices(values, count):
     return np.sort(np.concatenate([above, tied[: count - len(above)]]))
 
 
+@lru_cache(maxsize=1)
 def warmup():
+    from .kernels import warmup as kernel_warmup
+
+    kernel_warmup()
     fwht(np.zeros(4))
     characters(np.zeros(2, dtype=np.uint64), np.zeros(2, dtype=np.uint64))
     scatter_blocks(np.ones((2, 1)), np.zeros(2, dtype=np.int64), np.zeros(2), 2)
