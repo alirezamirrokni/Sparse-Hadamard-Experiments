@@ -27,12 +27,34 @@ from threadpoolctl import threadpool_limits
 from src.algebra import warmup
 from src.experiments import execute, jobs
 from src.plotting import render
-from src.storage import Store, atomic_text, digest, provenance, source_digest
+from src.storage import Store, atomic_text, digest, provenance
 from src.upstream import fetch_sources
 
 
 ROOT = Path(__file__).resolve().parent
 SUITES = ("phase", "graphs", "scaling", "robust", "hpo")
+
+
+def numerical_source_digest():
+    value = hashlib.sha256()
+    files = [file for file in (ROOT / "src").glob("*.py") if file.name != "plotting.py"]
+    files += list((ROOT / "src").glob("upstream_manifest.json"))
+    for file in sorted(files):
+        value.update(file.name.encode())
+        value.update(file.read_bytes())
+    return value.hexdigest()
+
+
+def cache_implementation(output, suite):
+    manifest = output / suite / "manifest.json"
+    if manifest.exists():
+        identity = json.loads(manifest.read_text())["identity"]
+        if identity.get("numerical_source_sha256") != numerical_source_digest():
+            raise RuntimeError(
+                f"Numerical inputs changed for {suite}; choose a fresh --output directory"
+            )
+        return identity["source_sha256"]
+    return numerical_source_digest()
 
 
 def configuration(path, suite):
@@ -74,9 +96,10 @@ def run_suite(args, suite, limit=None):
     config, runtime = configuration(args.config, suite)
     directory = args.output / suite
     directory.mkdir(parents=True, exist_ok=True)
-    implementation = source_digest()
+    implementation = cache_implementation(args.output, suite)
     identity = {
         "source_sha256": implementation,
+        "numerical_source_sha256": numerical_source_digest(),
         "config_sha256": digest(config),
         "entrypoint_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "timing_workers": 1,
@@ -162,7 +185,7 @@ def worker(args):
     total = sum(1 for _ in jobs(config))
     batch = runtime["batch_size"][suite]
     if count_completed(args.output, suite) >= total:
-        render(args.output, suite, config, source_digest())
+        render(args.output, suite, config, cache_implementation(args.output, suite))
         logging.info("suite=%s complete", suite)
         return
     while count_completed(args.output, suite) < total:
@@ -298,7 +321,7 @@ def main():
                 args.output,
                 suite,
                 configuration(args.config, suite)[0],
-                source_digest(),
+                cache_implementation(args.output, suite),
             )
     else:
         if args.limit is not None and (args.suite == "all" or args.limit < 1):

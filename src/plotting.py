@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import math
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -11,6 +12,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import norm
 
 from .storage import Store, atomic_text, canonical
@@ -21,7 +23,9 @@ def save_figure(figure, directory, name):
     directory.mkdir(parents=True, exist_ok=True)
     for extension in ["png", "pdf"]:
         destination = directory / f"{name}.{extension}"
-        temporary = destination.with_name(destination.stem + ".tmp." + extension)
+        temporary = destination.with_name(
+            destination.stem + f".{os.getpid()}.tmp." + extension
+        )
         figure.savefig(temporary, dpi=240, bbox_inches="tight", format=extension)
         temporary.replace(destination)
     plt.close(figure)
@@ -235,6 +239,24 @@ def curve(axis, rows, xvalue, metric, method, label=None, style="-", probability
         axis.fill_between(xs, lower, upper, color=color, alpha=0.08)
 
 
+def phase_surface(deltas, rhos, matrix, resolution=501):
+    if min(len(deltas), len(rhos)) < 2:
+        return np.asarray(deltas), np.asarray(rhos), matrix.copy()
+    xs = np.linspace(min(deltas), max(deltas), resolution)
+    ys = np.linspace(min(rhos), max(rhos), resolution)
+    xx, yy = np.meshgrid(xs, ys)
+    points = np.column_stack((yy.ravel(), xx.ravel()))
+    finite = np.isfinite(matrix)
+    values = RegularGridInterpolator((rhos, deltas), np.where(finite, matrix, 0.0))(
+        points
+    ).reshape(xx.shape)
+    coverage = RegularGridInterpolator((rhos, deltas), finite.astype(float))(
+        points
+    ).reshape(xx.shape)
+    values[coverage < 1 - 1e-12] = np.nan
+    return xs, ys, values
+
+
 def plot_phase_comparisons(results, config, directory):
     for sparse, filename in [(False, "phase_diagrams"), (True, "phase_sparse")]:
         columns = []
@@ -253,7 +275,7 @@ def plot_phase_comparisons(results, config, directory):
             squeeze=False,
             layout="constrained",
         )
-        cmap = plt.get_cmap("jet_r").copy()
+        cmap = plt.get_cmap("jet_r").resampled(1024)
         cmap.set_bad("#e9e9e9")
         for column, (size, distribution, experiment) in enumerate(columns):
             deltas, rhos = experiment["deltas"], experiment["rhos"]
@@ -276,22 +298,41 @@ def plot_phase_comparisons(results, config, directory):
                     if delta in deltas and rho in rhos:
                         matrix[rhos.index(rho), deltas.index(delta)] = np.mean(values)
                 axis = axes[row_index, column]
-                mesh = axis.pcolormesh(
-                    deltas,
-                    rhos,
-                    matrix,
-                    shading="nearest",
-                    cmap=cmap,
-                    vmin=0,
-                    vmax=1,
-                    rasterized=True,
-                )
-                finite = matrix[np.isfinite(matrix)]
+                xs, ys, surface = phase_surface(deltas, rhos, matrix)
+                if min(len(xs), len(ys)) >= 2:
+                    dx, dy = xs[1] - xs[0], ys[1] - ys[0]
+                    mesh = axis.imshow(
+                        np.ma.masked_invalid(surface),
+                        origin="lower",
+                        extent=(
+                            xs[0] - dx / 2,
+                            xs[-1] + dx / 2,
+                            ys[0] - dy / 2,
+                            ys[-1] + dy / 2,
+                        ),
+                        aspect="auto",
+                        interpolation="nearest",
+                        cmap=cmap,
+                        vmin=0,
+                        vmax=1,
+                    )
+                else:
+                    mesh = axis.pcolormesh(
+                        xs,
+                        ys,
+                        surface,
+                        shading="nearest",
+                        cmap=cmap,
+                        vmin=0,
+                        vmax=1,
+                        rasterized=True,
+                    )
+                finite = surface[np.isfinite(surface)]
                 if len(finite) and np.min(finite) < 0.5 < np.max(finite):
                     axis.contour(
-                        deltas,
-                        rhos,
-                        matrix,
+                        xs,
+                        ys,
+                        surface,
                         levels=[0.5],
                         colors="white",
                         linewidths=1.1,
@@ -313,7 +354,7 @@ def plot_phase_comparisons(results, config, directory):
         figure.colorbar(
             mesh,
             ax=axes.ravel().tolist(),
-            label="Recovery probability",
+            label="Recovery probability (interpolated)",
             shrink=0.9,
             pad=0.02,
         )
@@ -323,7 +364,8 @@ def plot_phase_comparisons(results, config, directory):
             fontsize=14,
         )
         figure.supxlabel(
-            "White: 50% recovery contour. Gray: not yet assessed."
+            "Bilinear interpolation of observed recovery fractions; no model fit. "
+            "White: 50% contour. Gray: insufficient coverage."
             + ("" if sparse else " Black: Gaussian asymptotic reference."),
             fontsize=8,
         )

@@ -33,7 +33,7 @@ Every update overwrites the same six named figure pairs under `results/figures/`
 | `robustness` | Error divided by the mixed-norm tail budget, fraction within the 4E target, and sample/runtime costs |
 | `hpo` | Validation quality versus evaluations and total cost, held-out test quality, synthetic objectives, and optimizer overhead |
 
-There is no separate DCT/Fourier reproduction of the historical Figure 3, and no collection of individual panel files. Black curves in the main phase comparison are Gaussian asymptotic references; white curves mark measured 50% recovery. Missing or resource-limited phase cells remain gray.
+There is no separate DCT/Fourier reproduction of the historical Figure 3, and no collection of individual panel files. Phase heatmaps use bilinear interpolation of observed recovery fractions, with the same interpolation for both methods. Black curves in the main phase comparison are Gaussian asymptotic references; white curves mark the interpolated 50% contour. Interpolation does not add trials, fit a probability model, or extrapolate beyond measured coverage. Regions lacking the neighboring observations needed for interpolation remain gray. Raw counts and probabilities remain in the SQLite cache and summary CSV.
 
 ## Experiments and interpretation
 
@@ -53,6 +53,6 @@ HPO compares Random Search, GP expected improvement, Harmonica, and the prefix/B
 
 Logs are in `results/logs/`. Compiled ADMM preserves the original update equations and uses reusable work arrays; `solver_backend: python` remains available for numerical checks. Compiled BP checks checkpoint eligibility every 100 iterations and saves approximately every two seconds. Other iterative solvers checkpoint every 100 iterations, synthetic query batches contain at most 128 points, and expensive model evaluations are saved individually. An in-progress model fit or LP call must restart after interruption.
 
-Source and resolved configurations are checked before resuming a cache. Use a fresh `--output` directory after changing numerical code or settings. All kernels warm before trial timing. Concurrent suites and other machine workloads can affect timings; an exclusive run is preferable for final publication speed claims. Failures, uncertainty intervals, and resource limits remain in the result tables.
+Numerical source and resolved configurations are checked before resuming a cache; plotting changes do not invalidate numerical results. Use a fresh `--output` directory after changing numerical code or settings. All kernels warm before trial timing. Concurrent suites and other machine workloads can affect timings; an exclusive run is preferable for final publication speed claims. Failures, uncertainty intervals, and resource limits remain in the result tables.
 
 References: [Donoho and Tanner](https://arxiv.org/abs/0906.2530), [Amrollahi et al. and upstream experiments](https://github.com/andisheh94/Efficiently-Learning-Fourier-Sparse-Set-Functions/tree/4c3e161e13062a356afcba1f41d0493b0373336c), and [Hazan, Klivans, and Yuan](https://arxiv.org/abs/1706.00764).
