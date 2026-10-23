@@ -1,0 +1,343 @@
+{
+  "selected_settings": {
+    "solver": "bp",
+    "sample_factor": 2.4,
+    "validated": true,
+    "attempts": 1,
+    "validation_min": 0,
+    "sampling": "distinct",
+    "reuse_samples": true,
+    "initial_factor": 2.0,
+    "initial_offset": 6,
+    "extension_factor": 0.5,
+    "validation_factor": 0
+  },
+  "calibration": {
+    "settings": {
+      "solver": "bp",
+      "sample_factor": 2.4,
+      "validated": true,
+      "attempts": 1,
+      "validation_min": 0,
+      "sampling": "distinct",
+      "reuse_samples": true,
+      "initial_factor": 2.0,
+      "initial_offset": 6,
+      "extension_factor": 0.5,
+      "validation_factor": 0
+    },
+    "mean_absolute_probability_gap": 0.078125,
+    "mean_success_deficit": 0.0625,
+    "prefix_success_rate": 0.9375,
+    "median_paired_speedup": 0.9573819473026803,
+    "multiround_trials": 8,
+    "trials": 64,
+    "per_cell": [
+      {
+        "spec": {
+          "delta": 0.14453125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.10810810810810811,
+          "size": 8
+        },
+        "cs_success": 1.0,
+        "prefix_success": 0.875
+      },
+      {
+        "spec": {
+          "delta": 0.04296875,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.09090909090909091,
+          "size": 10
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.068359375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.11428571428571428,
+          "size": 10
+        },
+        "cs_success": 0.875,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.142578125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.1095890410958904,
+          "size": 10
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.014892578125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.06557377049180328,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 0.625
+      },
+      {
+        "spec": {
+          "delta": 0.02197265625,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.08888888888888889,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.04541015625,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.08602150537634409,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.08349609375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.0935672514619883,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      }
+    ]
+  },
+  "held_out_validation": {
+    "settings": {
+      "solver": "bp",
+      "sample_factor": 2.4,
+      "validated": true,
+      "attempts": 1,
+      "validation_min": 0,
+      "sampling": "distinct",
+      "reuse_samples": true,
+      "initial_factor": 2.0,
+      "initial_offset": 6,
+      "extension_factor": 0.5,
+      "validation_factor": 0
+    },
+    "mean_absolute_probability_gap": 0.03125,
+    "mean_success_deficit": 0.0234375,
+    "prefix_success_rate": 0.9765625,
+    "median_paired_speedup": 0.993042663618988,
+    "multiround_trials": 16,
+    "trials": 128,
+    "per_cell": [
+      {
+        "spec": {
+          "delta": 0.14453125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.10810810810810811,
+          "size": 8
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.04296875,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.09090909090909091,
+          "size": 10
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.068359375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.11428571428571428,
+          "size": 10
+        },
+        "cs_success": 0.9375,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.142578125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.1095890410958904,
+          "size": 10
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.014892578125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.06557377049180328,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 0.8125
+      },
+      {
+        "spec": {
+          "delta": 0.02197265625,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.08888888888888889,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.04541015625,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.08602150537634409,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.08349609375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.0935672514619883,
+          "size": 12
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      }
+    ]
+  },
+  "candidate_count": 378,
+  "implementation": "d0749f890283c57b1d9df3a1648aa0f5cf438687455411730b0c3f10b6594c90",
+  "config": {
+    "seed": 20261024,
+    "defaults": {
+      "solver": "bp",
+      "max_iterations": 2000,
+      "tolerance": 1e-07,
+      "max_dense_bytes": 268435456,
+      "max_local_columns": 65536
+    },
+    "baseline": {
+      "solver": "bp"
+    },
+    "prefix": {
+      "solver": "bp",
+      "sample_factor": 2.4,
+      "validated": true,
+      "attempts": 1,
+      "validation_min": 4,
+      "sampling": "distinct",
+      "reuse_samples": true
+    },
+    "grid": {
+      "initial_factor": [
+        1.0,
+        1.5,
+        2.0
+      ],
+      "initial_offset": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "extension_factor": [
+        0.5,
+        1.0,
+        1.5
+      ],
+      "validation_factor": [
+        0,
+        0.25,
+        0.5
+      ],
+      "validation_min": [
+        0,
+        4
+      ]
+    },
+    "max_candidates": 378,
+    "rungs": [
+      1,
+      3,
+      8
+    ],
+    "reduction": 3,
+    "validation_trials": 16,
+    "cells": [
+      {
+        "dimension": 8,
+        "sparsity": 4,
+        "queries": 37
+      },
+      {
+        "dimension": 10,
+        "sparsity": 4,
+        "queries": 44
+      },
+      {
+        "dimension": 10,
+        "sparsity": 8,
+        "queries": 70
+      },
+      {
+        "dimension": 10,
+        "sparsity": 16,
+        "queries": 146
+      },
+      {
+        "dimension": 12,
+        "sparsity": 4,
+        "queries": 61
+      },
+      {
+        "dimension": 12,
+        "sparsity": 8,
+        "queries": 90
+      },
+      {
+        "dimension": 12,
+        "sparsity": 16,
+        "queries": 186
+      },
+      {
+        "dimension": 12,
+        "sparsity": 32,
+        "queries": 342
+      }
+    ]
+  },
+  "timing_workers": 4,
+  "selection_rule": "Minimize recovery deficit, then maximize recovery rate, then minimize absolute probability gap; timing does not select parameters"
+}

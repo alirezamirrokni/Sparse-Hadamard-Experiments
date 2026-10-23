@@ -1,0 +1,91 @@
+{
+  "seed": 20261023,
+  "split": "evaluation",
+  "trials": 20,
+  "defaults": {
+    "max_iterations": 6000,
+    "tolerance": 1e-08,
+    "max_dense_bytes": 536870912,
+    "max_global_columns": 2000000,
+    "max_local_columns": 2000000
+  },
+  "methods": {
+    "cs": {
+      "solver": "bp"
+    },
+    "prefix": {
+      "solver": "bp",
+      "initial_factor": 2.0,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": true,
+      "validation_factor": 0.25,
+      "validation_min": 8,
+      "attempts": 2,
+      "sampling": "distinct"
+    },
+    "prefix_bch": {
+      "solver": "bp",
+      "initial_factor": 2.0,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": true,
+      "validation_factor": 0.25,
+      "validation_min": 8,
+      "attempts": 2,
+      "sampling": "distinct"
+    }
+  },
+  "experiments": [
+    {
+      "kind": "scaling",
+      "methods": [
+        "cs",
+        "prefix"
+      ],
+      "grid": {
+        "dimension": [
+          12,
+          14,
+          16,
+          18,
+          20
+        ],
+        "sparsity": [
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "kind": "scaling",
+      "methods": [
+        "cs",
+        "prefix_bch"
+      ],
+      "grid": {
+        "dimension": [
+          30,
+          60,
+          100,
+          200,
+          400,
+          800
+        ],
+        "sparsity": [
+          8,
+          16,
+          32
+        ],
+        "degree": [
+          2,
+          3
+        ]
+      }
+    }
+  ]
+}

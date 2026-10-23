@@ -1,0 +1,90 @@
+{
+  "seed": 20261023,
+  "split": "evaluation",
+  "trials": 10,
+  "defaults": {
+    "max_iterations": 6000,
+    "tolerance": 1e-08,
+    "max_dense_bytes": 536870912,
+    "max_global_columns": 2000000,
+    "max_local_columns": 2000000
+  },
+  "methods": {
+    "random": {},
+    "gp_ei": {},
+    "harmonica": {
+      "solver": "fista",
+      "penalty": 0.01,
+      "max_iterations": 3000
+    },
+    "prefix_bch": {
+      "solver": "fista",
+      "initial_factor": 1.5,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": false,
+      "validation_factor": 0.25,
+      "validation_min": 0,
+      "attempts": 2,
+      "sampling": "distinct",
+      "penalty": 0.01
+    }
+  },
+  "experiments": [
+    {
+      "kind": "hpo",
+      "grid": {
+        "task": [
+          "digits"
+        ],
+        "dimension": [
+          12,
+          30,
+          60,
+          100
+        ],
+        "budget": [
+          160,
+          320
+        ]
+      },
+      "settings": {
+        "stages": 3,
+        "samples_per_stage": 100,
+        "final_samples": 32,
+        "sparsity": 5,
+        "degree": 3
+      }
+    },
+    {
+      "kind": "hpo",
+      "grid": {
+        "task": [
+          "sparse",
+          "hierarchical"
+        ],
+        "dimension": [
+          30,
+          60,
+          100,
+          200
+        ],
+        "budget": [
+          400
+        ],
+        "noise": [
+          0.0,
+          1.0
+        ]
+      },
+      "settings": {
+        "stages": 3,
+        "samples_per_stage": 100,
+        "final_samples": 64,
+        "sparsity": 5,
+        "degree": 3
+      }
+    }
+  ]
+}

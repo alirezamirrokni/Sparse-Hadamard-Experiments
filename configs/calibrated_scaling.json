@@ -1,0 +1,195 @@
+{
+  "selected_settings": {
+    "solver": "bp",
+    "sample_factor": 2.4,
+    "validated": true,
+    "attempts": 1,
+    "validation_min": 0,
+    "sampling": "distinct",
+    "reuse_samples": true,
+    "initial_factor": 2.0,
+    "initial_offset": 10,
+    "extension_factor": 1.0,
+    "validation_factor": 0
+  },
+  "calibration": {
+    "settings": {
+      "solver": "bp",
+      "sample_factor": 2.4,
+      "validated": true,
+      "attempts": 1,
+      "validation_min": 0,
+      "sampling": "distinct",
+      "reuse_samples": true,
+      "initial_factor": 2.0,
+      "initial_offset": 10,
+      "extension_factor": 1.0,
+      "validation_factor": 0
+    },
+    "mean_absolute_probability_gap": 0.0,
+    "mean_success_deficit": 0.0,
+    "prefix_success_rate": 1.0,
+    "median_paired_speedup": 3.399190800869236,
+    "multiround_trials": 4,
+    "trials": 6,
+    "per_cell": [
+      {
+        "spec": {
+          "delta": 0.00531005859375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.04597701149425287,
+          "size": 14
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.0015411376953125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.039603960396039604,
+          "size": 16
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.000823974609375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.037037037037037035,
+          "size": 18
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      }
+    ]
+  },
+  "held_out_validation": {
+    "settings": {
+      "solver": "bp",
+      "sample_factor": 2.4,
+      "validated": true,
+      "attempts": 1,
+      "validation_min": 0,
+      "sampling": "distinct",
+      "reuse_samples": true,
+      "initial_factor": 2.0,
+      "initial_offset": 10,
+      "extension_factor": 1.0,
+      "validation_factor": 0
+    },
+    "mean_absolute_probability_gap": 0.0,
+    "mean_success_deficit": 0.0,
+    "prefix_success_rate": 1.0,
+    "median_paired_speedup": 2.5999272087475873,
+    "multiround_trials": 4,
+    "trials": 6,
+    "per_cell": [
+      {
+        "spec": {
+          "delta": 0.00531005859375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.04597701149425287,
+          "size": 14
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.0015411376953125,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.039603960396039604,
+          "size": 16
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      },
+      {
+        "spec": {
+          "delta": 0.000823974609375,
+          "distribution": "rademacher",
+          "kind": "phase",
+          "rho": 0.037037037037037035,
+          "size": 18
+        },
+        "cs_success": 1.0,
+        "prefix_success": 1.0
+      }
+    ]
+  },
+  "candidate_count": 9,
+  "implementation": "86a29b98bd8e430166267faf40756b3b9e886b94b3a973627bf9f5f0c14f94b6",
+  "config": {
+    "seed": 20261026,
+    "defaults": {
+      "solver": "bp",
+      "max_iterations": 2000,
+      "tolerance": 1e-07,
+      "solver_seconds": 120,
+      "max_dense_bytes": 268435456,
+      "max_local_columns": 65536,
+      "timing_workers": 1,
+      "blas_threads": 1
+    },
+    "baseline": {
+      "solver": "bp"
+    },
+    "prefix": {
+      "solver": "bp",
+      "sample_factor": 2.4,
+      "validated": true,
+      "attempts": 1,
+      "validation_min": 0,
+      "sampling": "distinct",
+      "reuse_samples": true,
+      "initial_factor": 2.0,
+      "initial_offset": 6,
+      "extension_factor": 0.5,
+      "validation_factor": 0
+    },
+    "grid": {
+      "extension_factor": [
+        0.5,
+        1.0,
+        1.5
+      ],
+      "initial_offset": [
+        6,
+        8,
+        10
+      ]
+    },
+    "max_candidates": 9,
+    "rungs": [
+      2
+    ],
+    "reduction": 3,
+    "validation_trials": 2,
+    "cells": [
+      {
+        "dimension": 14,
+        "sparsity": 4,
+        "queries": 87
+      },
+      {
+        "dimension": 16,
+        "sparsity": 4,
+        "queries": 101
+      },
+      {
+        "dimension": 18,
+        "sparsity": 8,
+        "queries": 216
+      }
+    ]
+  },
+  "timing_workers": 1,
+  "selection_rule": "Minimize recovery deficit, then maximize recovery rate, then minimize absolute probability gap; timing does not select parameters"
+}

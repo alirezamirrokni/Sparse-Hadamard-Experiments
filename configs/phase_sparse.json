@@ -1,0 +1,69 @@
+{
+  "seed": 20261023,
+  "split": "evaluation",
+  "trials": 100,
+  "defaults": {
+    "max_iterations": 6000,
+    "tolerance": 1e-08,
+    "max_dense_bytes": 536870912,
+    "max_global_columns": 2000000,
+    "max_local_columns": 2000000
+  },
+  "methods": {
+    "cs": {
+      "solver": "bp"
+    },
+    "prefix": {
+      "solver": "bp",
+      "initial_factor": 2.0,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": true,
+      "validation_factor": 0.25,
+      "validation_min": 8,
+      "attempts": 2,
+      "sampling": "distinct"
+    },
+    "prefix_unvalidated": {
+      "solver": "bp",
+      "initial_factor": 2.0,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": false,
+      "validation_factor": 0.25,
+      "validation_min": 8,
+      "attempts": 2,
+      "sampling": "distinct"
+    }
+  },
+  "experiments": [
+    {
+      "kind": "phase",
+      "sizes": [
+        12,
+        14,
+        16
+      ],
+      "deltas": [
+        0.005,
+        0.01,
+        0.02,
+        0.04,
+        0.08
+      ],
+      "rhos": [
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.125,
+        0.15
+      ],
+      "distributions": [
+        "rademacher"
+      ]
+    }
+  ]
+}

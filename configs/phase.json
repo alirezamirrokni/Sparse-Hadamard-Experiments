@@ -1,0 +1,95 @@
+{
+  "seed": 20261023,
+  "split": "evaluation",
+  "trials": 100,
+  "defaults": {
+    "max_iterations": 6000,
+    "tolerance": 1e-08,
+    "max_dense_bytes": 536870912,
+    "max_global_columns": 2000000,
+    "max_local_columns": 2000000
+  },
+  "methods": {
+    "cs": {
+      "solver": "bp"
+    },
+    "prefix": {
+      "solver": "bp",
+      "initial_factor": 2.0,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": true,
+      "validation_factor": 0.25,
+      "validation_min": 8,
+      "attempts": 2,
+      "sampling": "distinct"
+    },
+    "prefix_unvalidated": {
+      "solver": "bp",
+      "initial_factor": 2.0,
+      "initial_offset": 1,
+      "extension_factor": 1.0,
+      "sample_factor": 2.4,
+      "validated": false,
+      "validation_factor": 0.25,
+      "validation_min": 8,
+      "attempts": 2,
+      "sampling": "distinct"
+    }
+  },
+  "experiments": [
+    {
+      "kind": "phase",
+      "sizes": [
+        8,
+        10
+      ],
+      "deltas": [
+        0.1,
+        0.15,
+        0.2,
+        0.25,
+        0.3,
+        0.35,
+        0.4,
+        0.45,
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95
+      ],
+      "rhos": [
+        0.05,
+        0.1,
+        0.15,
+        0.2,
+        0.25,
+        0.3,
+        0.35,
+        0.4,
+        0.45,
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95
+      ],
+      "distributions": [
+        "rademacher",
+        "gaussian"
+      ]
+    }
+  ]
+}
