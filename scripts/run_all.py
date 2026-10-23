@@ -184,7 +184,7 @@ def start():
                     "display-message",
                     "-p",
                     "-t",
-                    f"={name}",
+                    f"{name}:0.0",
                     "#{pane_dead}",
                 ],
                 text=True,
@@ -208,7 +208,8 @@ def start():
             check=True,
         )
         subprocess.run(
-            ["tmux", "set-option", "-t", f"={name}", "remain-on-exit", "on"], check=True
+            ["tmux", "set-option", "-w", "-t", f"{name}:0", "remain-on-exit", "on"],
+            check=True,
         )
         print(f"{name}: started {' -> '.join(suites)}")
 
