@@ -25,8 +25,8 @@ For another supported Python version (3.11 or later), install with `python -m pi
 ```bash
 shtbench plan configs/figure3.json
 shtbench run configs/figure3.json --output outputs/figure3
-shtbench run configs/phase.json --output outputs/phase --selection configs/calibrated.json
-shtbench run configs/phase_sparse.json --output outputs/phase_sparse --selection configs/calibrated.json
+shtbench run configs/phase.json --output outputs/phase
+shtbench run configs/phase_sparse.json --output outputs/phase_sparse
 shtbench run configs/graphs.json --output outputs/graphs
 shtbench run configs/scaling.json --output outputs/scaling
 shtbench run configs/robust.json --output outputs/robust
@@ -35,7 +35,7 @@ shtbench run configs/hpo.json --output outputs/hpo
 
 The supplied production grids are large. `plan` reports their exact trial counts before execution. Run the suites separately to obtain useful figures progressively. `--limit 1000` completes only the next 1,000 uncached trials; rerunning the same command continues with the next pending trials. `--no-plots` delays rendering while a long run is in progress.
 
-`configs/paper.json` combines the principal suites. `configs/upstream_all.json` also includes the upstream exploratory sweeps from `runExperiments.py`, in addition to the four principal graph runners and reconstruction experiments. Its exploratory parameter sweep is substantially larger than the paper figure grids.
+`configs/graphs.json` includes the principal graph runners, reconstruction experiments, and both exploratory sweeps from upstream `runExperiments.py`. Every requested graph experiment is retained in this single configuration.
 
 Use one worker for publication timing. More workers improve throughput but introduce resource contention:
 
@@ -51,20 +51,13 @@ shtbench run configs/phase.json --output outputs/phase1 --shard 1 --shards 2 --n
 shtbench merge outputs/phase0/cache.sqlite outputs/phase1/cache.sqlite --output outputs/phase
 ```
 
-Use the same `--selection` argument on every shard. A merge imports completed results; it does not merge resumable intermediate solver state or oracle caches. Each original shard remains resumable.
+A merge imports completed results; it does not merge resumable intermediate solver state or oracle caches. Each original shard remains resumable.
 
-## Calibration
+## Frozen parameters
 
-```bash
-shtbench tune configs/tuning.json --output outputs/calibration --workers 4
-shtbench run configs/phase.json --output outputs/phase --selection outputs/calibration/selected.json
-```
+The calibrated settings are embedded directly in the production configurations. The phase suites use initialization offset 6 and extension factor 0.5. The ordinary prefix method in the scaling suite uses the larger-domain profile, with initialization offset 10 and extension factor 1. Graph, BCH scaling, robust, and HPO methods retain their task-specific practical settings.
 
-The tuner searches initialization width, extension width, and validation overhead using successive halving. It selects parameters on calibration seeds, freezes the selection, and then evaluates it on separate validation seeds. The production suites use another seed namespace. Timing does not select parameters. `search.json` retains every evaluated candidate and rung; `selected.json` records the frozen settings and validation outcomes. The main-run selection preserves explicitly configured solver, validation mode, penalty, and sampling factor for each method.
-
-The supplied calibration is described in [docs/calibration.md](docs/calibration.md). It is a finite calibration in the sparse regime, not evidence for every phase-diagram cell. Recalibrate after material solver or sampling changes.
-
-The graph and HPO defaults have their own practical settings. The small-domain phase calibration is not automatically applied to those different objectives. The supplemental `tuning_scaling.json` searches initialization and extension choices on larger multiround instances.
+The small-domain search evaluated 378 candidates and completed 7,040 method-trials including independent validation. In the 128 held-out instances per method, CS recovered 127 and prefix recovered 125. Only sixteen prefix instances used multiple rounds, recovering thirteen. The supplemental larger-domain pilot recovered all six held-out instances for both methods, with four multiround prefix instances. These finite calibration results do not establish a matching full phase boundary.
 
 ## Recovery and sampling conventions
 
@@ -89,6 +82,18 @@ The objectives are a sparse polynomial, the three-level hierarchical function de
 The digits choices cover loss, four regularization strengths, penalty type, four step sizes, learning-rate schedule, iterate averaging, intercept fitting, class weighting, training iterations, and feature scaling. This is a new real HPO workload. It does not reproduce the historical CIFAR-10/ResNet GPU numbers. The experiment can demonstrate a useful speedup only if comparable validation quality is preserved after accounting for all oracle work.
 
 The plots include incumbent objective versus objective evaluations, incumbent objective versus charged cold-oracle cost plus measured optimizer overhead, timing decomposition, and optimizer scaling with dummy dimension. The hierarchical function's noise is a deterministic per-configuration realization to keep caching and paired comparisons reproducible. Current Harmonica uses a single minimizing restriction (`t=1`) and a random final search, both options allowed by the paper's algorithm.
+
+## Persistent tmux runs
+
+```bash
+.venv/bin/python scripts/run_all.py start
+.venv/bin/python scripts/run_all.py status
+tmux attach -t sht-phase
+```
+
+Four persistent sessions use one process and one BLAS thread each. `sht-phase` runs the full phase diagram followed by the sparse phase grid; `sht-graphs` runs all graph experiments; `sht-hpo` runs HPO; `sht-other` runs the Figure 3 references, robustness, and scaling in sequence. Each lane uses a separate CPU when affinity is available. Other machine workloads can still affect timing.
+
+The launcher renders PNG and PDF figures after each completed batch. Logs and session status are in `outputs/sessions/`; each suite keeps its cache and figures under `outputs/<suite>/`. Completed sessions remain visible in tmux. Rerunning `start` resumes stopped sessions from their caches and leaves active sessions alone. Sessions survive terminal and SSH disconnects; restart them after a machine reboot. The launcher stops between batches if fewer than 5 GiB of disk space remain. Keep source and configurations fixed during a run; the launcher rejects changed inputs in an existing output directory.
 
 ## Outputs and recovery after interruption
 
@@ -127,5 +132,3 @@ Graph operating-point plots follow the upstream convention of selecting settings
 - Donoho and Tanner, [Observed Universality of Phase Transitions in High-Dimensional Geometry](https://arxiv.org/abs/0906.2530).
 - Amrollahi et al., [Efficiently Learning Fourier Sparse Set Functions](https://github.com/andisheh94/Efficiently-Learning-Fourier-Sparse-Set-Functions), pinned at `4c3e161e13062a356afcba1f41d0493b0373336c`.
 - Hazan, Klivans, and Yuan, [Hyperparameter Optimization: A Spectral Approach](https://arxiv.org/abs/1706.00764).
-
-[docs/experiment-map.md](docs/experiment-map.md) maps upstream runners and notebook figures to the supplied configurations and explains the compatibility changes.

@@ -16,14 +16,15 @@
     "prefix": {
       "solver": "bp",
       "initial_factor": 2.0,
-      "initial_offset": 1,
+      "initial_offset": 10,
       "extension_factor": 1.0,
       "sample_factor": 2.4,
       "validated": true,
-      "validation_factor": 0.25,
-      "validation_min": 8,
-      "attempts": 2,
-      "sampling": "distinct"
+      "validation_factor": 0,
+      "validation_min": 0,
+      "attempts": 1,
+      "sampling": "distinct",
+      "reuse_samples": true
     },
     "prefix_bch": {
       "solver": "bp",
