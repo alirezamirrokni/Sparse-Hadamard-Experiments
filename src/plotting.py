@@ -472,7 +472,13 @@ def comparison_style():
 
 
 def comparison_legend(
-    figure, axes, directory, name, methods=COMPARISON_METHODS, headings=()
+    figure,
+    axes,
+    directory,
+    name,
+    methods=COMPARISON_METHODS,
+    headings=(),
+    extra_handles=(),
 ):
     methods = sorted(
         methods, key=lambda method: LABELS[method].startswith("SPHT (Ours)")
@@ -481,11 +487,13 @@ def comparison_legend(
         Line2D([0], [0], color=COLORS[method], lw=2.4, marker="o", label=LABELS[method])
         for method in methods
     ]
+    if extra_handles:
+        handles[-1:-1] = extra_handles
     figure.legend(
         handles=handles,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.01),
-        ncol=len(methods),
+        ncol=len(handles),
         frameon=False,
     )
     figure.tight_layout(rect=(0, 0.13, 1, 0.9 if headings else 1), pad=1.0, w_pad=1.0)
@@ -590,126 +598,92 @@ def matched_successes(results):
 
 
 def plot_scaling_comparison(results, directory):
-    figure, axes = plt.subplots(2, 3, figsize=(17, 10))
     paired = matched_successes(results)
-    global_rows = [r for r in results if r["job"]["spec"].get("degree") is None]
-    for method in ["cs", "prefix"]:
-        for index, sparsity in enumerate([4, 8, 16, 32]):
-            rows = [
-                r
-                for r in global_rows
-                if r["job"]["method"] == method
-                and r["job"]["spec"]["sparsity"] == sparsity
-            ]
-            timed = [
-                r
-                for r in paired
-                if r["job"]["method"] == method
-                and r["job"]["spec"].get("degree") is None
-                and r["job"]["spec"]["sparsity"] == sparsity
-            ]
-            label = f"{LABELS[method]}, k={sparsity}"
-            xvalue = lambda spec: 2 ** spec["dimension"]
-            curve(
-                axes[0, 0],
-                timed,
-                xvalue,
-                "algorithm_seconds",
-                method,
-                label,
-                STYLES[index],
-            )
-            curve(axes[0, 1], rows, xvalue, "queries", method, label, STYLES[index])
-            curve(
-                axes[0, 2], rows, xvalue, "success", method, label, STYLES[index], True
-            )
-    for column, degree in enumerate([2, 3]):
-        for method in ["cs", "prefix_bch"]:
-            for index, sparsity in enumerate([8, 16, 32]):
-                rows = [
-                    r
-                    for r in paired
-                    if r["job"]["method"] == method
-                    and r["job"]["spec"].get("degree") == degree
-                    and r["job"]["spec"]["sparsity"] == sparsity
-                ]
-                curve(
-                    axes[1, column],
-                    rows,
-                    lambda spec: spec["dimension"],
-                    "algorithm_seconds",
-                    method,
-                    f"{LABELS[method]}, k={sparsity}",
-                    STYLES[index],
-                )
-        axes[1, column].set(
-            xlabel="Boolean variables",
-            ylabel="Runtime (s)",
-            title=f"Degree {degree}: jointly successful instances",
-            xscale="log",
-            yscale="log",
+    sparsities = sorted({row["job"]["spec"]["sparsity"] for row in results})
+    styles = dict(zip(sparsities, STYLES))
+    sparsity_handles = [
+        Line2D(
+            [0],
+            [0],
+            color="#596574",
+            lw=2.4,
+            linestyle=styles[sparsity],
+            label=rf"$k = {sparsity}$",
         )
-    for method in ["cs", "prefix_bch"]:
-        for index, degree in enumerate([2, 3]):
-            rows = [
-                r
-                for r in results
-                if r["job"]["method"] == method
-                and r["job"]["spec"].get("degree") == degree
-            ]
-            curve(
-                axes[1, 2],
-                rows,
-                lambda spec: spec["dimension"],
-                "success",
-                method,
-                f"{LABELS[method]}, d={degree}",
-                STYLES[index],
-                True,
+        for sparsity in sparsities
+    ]
+    panels = [
+        (None, "Jointly successful instances", r"$N = 2^n$", "prefix"),
+        (2, "Degree 2", "Boolean variables", "prefix_bch"),
+        (3, "Degree 3", "Boolean variables", "prefix_bch"),
+    ]
+    with comparison_style():
+        for metric, ylabel, name in [
+            ("algorithm_seconds", "Runtime (s)", "scaling_runtime"),
+            ("queries", "Oracle queries", "scaling_queries"),
+        ]:
+            figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+            for axis, (degree, title, xlabel, spht) in zip(axes, panels):
+                for method in ["cs", spht]:
+                    for sparsity in sparsities:
+                        rows = [
+                            row
+                            for row in paired
+                            if row["job"]["method"] == method
+                            and row["job"]["spec"].get("degree") == degree
+                            and row["job"]["spec"]["sparsity"] == sparsity
+                        ]
+                        curve(
+                            axis,
+                            rows,
+                            lambda spec, degree=degree: (
+                                2 ** spec["dimension"]
+                                if degree is None
+                                else spec["dimension"]
+                            ),
+                            metric,
+                            method,
+                            style=styles[sparsity],
+                        )
+                axis.set(
+                    xlabel=xlabel,
+                    ylabel=ylabel,
+                    title=title,
+                    xscale="log",
+                    yscale="log",
+                )
+                if axis.lines and axis.get_xlim()[1] / axis.get_xlim()[0] < 10:
+                    xs = sorted(
+                        {float(x) for line in axis.lines for x in line.get_xdata()}
+                    )
+                    ticks = xs if len(xs) <= 3 else [xs[0], xs[len(xs) // 2], xs[-1]]
+                    axis.set_xticks(ticks)
+                    axis.xaxis.set_major_formatter(ScalarFormatter())
+                if axis.lines and axis.get_ylim()[1] / axis.get_ylim()[0] < 100:
+                    axis.yaxis.set_major_locator(
+                        LogLocator(base=10, subs=(1, 2, 5), numticks=7)
+                    )
+                    axis.yaxis.set_major_formatter(ScalarFormatter())
+                axis.xaxis.set_minor_formatter(NullFormatter())
+                axis.yaxis.set_minor_formatter(NullFormatter())
+                if not axis.lines:
+                    axis.text(
+                        0.5,
+                        0.5,
+                        "Awaiting jointly successful trials",
+                        transform=axis.transAxes,
+                        ha="center",
+                        va="center",
+                        color="#777777",
+                    )
+            comparison_legend(
+                figure,
+                axes,
+                directory,
+                name,
+                methods=("cs", "prefix"),
+                extra_handles=sparsity_handles,
             )
-    axes[0, 0].set(
-        xlabel="N",
-        ylabel="Runtime (s)",
-        title="Jointly successful instances",
-        xscale="log",
-        yscale="log",
-    )
-    axes[0, 1].set(
-        xlabel="N",
-        ylabel="Oracle queries",
-        title="Unrestricted spectra",
-        xscale="log",
-        yscale="log",
-    )
-    axes[0, 2].set(
-        xlabel="N",
-        ylabel="Recovery probability",
-        title="Unrestricted spectra",
-        xscale="log",
-        ylim=(-0.03, 1.03),
-    )
-    axes[1, 2].set(
-        xlabel="Boolean variables",
-        ylabel="Recovery probability",
-        title="Low degree: mean across sparsities",
-        xscale="log",
-        ylim=(-0.03, 1.03),
-    )
-    censored = sum(r["status"] not in ASSESSED for r in results)
-    axes[1, 2].text(
-        0.02,
-        0.86,
-        f"Resource/configuration-limited\ntrials: {censored}",
-        transform=axes[1, 2].transAxes,
-        fontsize=11,
-    )
-    finish(
-        figure,
-        axes,
-        "CS versus prefix recovery: scaling and recovery quality",
-        directory,
-        "scaling",
-    )
 
 
 def plot_robust_comparison(results, directory):

@@ -20,9 +20,9 @@ tmux attach -t sht-phase
 
 Use `.venv/bin/python main.py` to run everything sequentially in the foreground. Individual suites are available through `--suite phase`, `graphs`, `scaling`, `robust`, or `hpo`. `main.py plan` prints the trial counts, and `main.py plot` refreshes the figures from completed results. To run only newly added methods, use `.venv/bin/python main.py run --suite graphs --methods cs` or `.venv/bin/python main.py run --suite robust --methods stobbe swht`; these commands resume their own completed trials without running other methods.
 
-## Eight figures, saved as PNG and PDF
+## Nine figures, saved as PNG and PDF
 
-Every update overwrites the same eight named figure pairs under `results/figures/`.
+Every update overwrites the same nine named figure pairs under `results/figures/`.
 
 | Figure | Panels |
 | --- | --- |
@@ -30,7 +30,8 @@ Every update overwrites the same eight named figure pairs under `results/figures
 | `phase_sparse` | The same comparison at larger domains and smaller query fractions |
 | `graphs` | Runtime and query counts for the principal edge and vertex sweeps |
 | `graph_recovery` | Exact-recovery fractions for the two principal graph sweeps |
-| `scaling` | Runtime, query counts, and recovery quality; unrestricted and low-degree spectra |
+| `scaling_runtime` | Runtime on jointly successful instances: unrestricted, degree 2, and degree 3 |
+| `scaling_queries` | Oracle queries on the same jointly successful instances: unrestricted, degree 2, and degree 3 |
 | `robustness_error` | Recovery error divided by the mixed-norm tail budget, shown on log scales |
 | `robustness_cost` | Fraction within the 4E target, query counts, and runtime |
 | `hpo` | Validation quality versus evaluations and total cost, held-out test quality, synthetic objectives, and optimizer overhead |
@@ -41,7 +42,7 @@ There is no separate DCT/Fourier reproduction of the historical Figure 3, and no
 
 Phase experiments use equal total distinct-query budgets for CS and prefix recovery, including validation queries. They pair generated spectra across methods. The main grids use ten repetitions and the sparse grids five. Cells are visited before repetitions are added, so the comparison develops across the whole grid early. Recovery means relative coefficient error at most `1e-6` after common support debiasing.
 
-The largest unrestricted domain is `N = 2^20`. Low-degree experiments and the principal graph sweeps reach 800 Boolean variables. These implicit domains are handled through BCH reduction. Resource-limited global baselines are recorded separately, rather than converted into failed numerical recoveries. Scaling runtimes use jointly successful CS/prefix instances; recovery panels and CSV tables show quality alongside timing.
+The largest unrestricted domain is `N = 2^20`. Low-degree experiments and the principal graph sweeps reach 800 Boolean variables. These implicit domains are handled through BCH reduction. Resource-limited global baselines are recorded separately, rather than converted into failed numerical recoveries. Both scaling figures use the same jointly successful CS/SPHT instances in each panel. They use Seaborn dark-grid styling with a single horizontal legend: colors identify methods and consistent line styles identify sparsities. Scaling recovery panels are omitted; raw outcomes, resource limits, and recovery statistics remain in the cache and summary CSV.
 
 The graph suite contains only the principal edge and vertex sweeps. It compares CS basis pursuit, SPHT, the Stobbe degree-two Lasso baseline, and upstream SWHT. CS and Stobbe use the known constant-plus-pairwise cut-function dictionary. CS uses sampling factor 2.4 and a 300-second solver cap; its timeouts are reported as resource-limited, not recovery failures. Operating points select the fastest tested setting with observed recovery of at least 90%; they are descriptive selections, not held-out estimates. The separate recovery figure uses all assessed settings. Missing measurements are omitted, not recorded as zero. Upstream snapshots and the three executed SWHT source files are pinned and checksum verified. Graphs and robustness share a slate/blue/green/orange palette for CS/SPHT/Stobbe/SWHT and one horizontal legend below each figure.
 
