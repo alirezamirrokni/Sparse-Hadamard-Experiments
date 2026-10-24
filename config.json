@@ -106,8 +106,11 @@
           "deltas": [
             0.005,
             0.01,
+            0.015,
             0.02,
+            0.03,
             0.04,
+            0.06,
             0.08
           ],
           "rhos": [
@@ -116,19 +119,32 @@
             0.075,
             0.1,
             0.125,
-            0.15
+            0.15,
+            0.175,
+            0.2,
+            0.225,
+            0.25,
+            0.275,
+            0.3
           ],
           "distributions": [
             "rademacher"
           ],
-          "trials": 5
+          "trials": 10,
+          "method_settings": {
+            "prefix": {
+              "initial_factor": 2.0,
+              "initial_offset": 10,
+              "extension_factor": 0.5
+            }
+          }
         }
       ]
     },
     "graphs": {
       "seed": 20261023,
-      "split": "evaluation",
-      "trials": 3,
+      "split": "paper-evaluation-v1",
+      "trials": 20,
       "defaults": {
         "max_iterations": 6000,
         "tolerance": 1e-06,
@@ -139,11 +155,12 @@
       },
       "methods": {
         "swht": {
-          "C": 1.2,
-          "ratio": 1.3
+          "implementation": "original",
+          "configuration": "published"
         },
         "stobbe": {
-          "C": 2.5
+          "implementation": "original",
+          "configuration": "published"
         },
         "prefix_bch": {
           "solver": "bp",
@@ -160,8 +177,7 @@
         "cs": {
           "solver": "bp",
           "sample_factor": 2.4,
-          "solver_seconds": 300,
-          "baseline_version": "graph-cs-v1"
+          "projection": "exact-degree-gram"
         }
       },
       "experiments": [
@@ -180,27 +196,7 @@
             60,
             65,
             70
-          ],
-          "parameter_grids": {
-            "swht": {
-              "C": [
-                1.1,
-                1.2
-              ],
-              "ratio": [
-                1.4,
-                1.3
-              ]
-            },
-            "stobbe": {
-              "C": [
-                1.5,
-                2.0,
-                2.5,
-                3.0
-              ]
-            }
-          }
+          ]
         },
         {
           "kind": "graph_vertices",
@@ -224,31 +220,12 @@
             700,
             800
           ],
-          "parameter_grids": {
-            "swht": {
-              "C": [
-                1.1,
-                1.2
-              ],
-              "ratio": [
-                1.4,
-                1.3
-              ]
-            },
-            "stobbe": {
-              "C": [
-                1.5,
-                2.0,
-                2.5,
-                3.0
-              ]
-            }
-          },
           "method_max_dimensions": {
             "stobbe": 210
           }
         }
-      ]
+      ],
+      "protocol": "paper-v1"
     },
     "hpo": {
       "seed": 20261023,
@@ -413,8 +390,8 @@
     },
     "scaling": {
       "seed": 20261030,
-      "split": "evaluation-v2",
-      "trials": 3,
+      "split": "paper-evaluation-v1",
+      "trials": 5,
       "defaults": {
         "max_iterations": 6000,
         "tolerance": 1e-06,
@@ -425,7 +402,8 @@
       },
       "methods": {
         "cs": {
-          "solver": "bp"
+          "solver": "bp",
+          "projection": "exact-degree-gram"
         },
         "prefix": {
           "solver": "bp",
@@ -504,7 +482,40 @@
             ]
           }
         }
-      ]
+      ],
+      "protocol": "paper-v1"
     }
+  },
+  "paper": {
+    "version": "paper-v1",
+    "seed": 20261024,
+    "time_limit_seconds": 1800,
+    "max_iterations": 6000,
+    "tolerance": 1e-06,
+    "max_dense_bytes": 8589934592,
+    "max_global_columns": 2000000,
+    "max_local_columns": 2000000,
+    "target_recovery": 0.9,
+    "cs_sample_factors": [
+      1.5,
+      2.4
+    ],
+    "cs_thresholds": [
+      0.01
+    ],
+    "calibration_repetitions": {
+      "graphs": 2,
+      "scaling": 2
+    },
+    "bootstrap_draws": 10000,
+    "plot_every": {
+      "graphs": 400,
+      "scaling": 100
+    },
+    "calibration_trial_seconds": 60,
+    "calibration_budget_seconds": 600,
+    "support_iterations": 16,
+    "certificate_rounds": 10,
+    "certificate_seconds": 20
   }
 }

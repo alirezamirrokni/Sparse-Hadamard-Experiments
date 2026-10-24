@@ -9,3 +9,5 @@ results/
 data/
 *.sqlite*
 .DS_Store
+
+.paper-venv/

@@ -15,3 +15,4 @@ include = ["src*"]
 
 [tool.setuptools.package-data]
 src = ["upstream_manifest.json"]
+"src.paper" = ["original_manifest.json"]

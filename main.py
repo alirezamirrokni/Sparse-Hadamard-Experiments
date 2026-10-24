@@ -3,13 +3,13 @@ import hashlib
 import json
 import logging
 import os
-from pathlib import Path
 import shlex
 import shutil
 import sqlite3
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 for variable in [
     "OMP_NUM_THREADS",
@@ -26,12 +26,13 @@ from threadpoolctl import threadpool_limits
 
 from src.algebra import warmup
 from src.experiments import execute, jobs
+from src.paper.scheduling import timing_slot
 from src.plotting import render
 from src.storage import Store, atomic_text, digest, provenance
 from src.upstream import fetch_sources
 
-
 ROOT = Path(__file__).resolve().parent
+logger = logging.getLogger(__name__)
 SUITES = ("phase", "graphs", "scaling", "robust", "hpo")
 
 
@@ -93,6 +94,15 @@ def count_completed(output, suite):
 
 
 def run_suite(args, suite, limit=None):
+    if paper_suite(args, suite):
+        from src.paper.protocol import completed, invoke, target
+
+        if limit is not None or args.methods:
+            raise ValueError(
+                "Paper runs use the complete frozen protocol; selective runs are disabled"
+            )
+        invoke(args, suite)
+        return completed(args.output, suite), target(args, suite)
     config, runtime = configuration(args.config, suite)
     directory = args.output / suite
     directory.mkdir(parents=True, exist_ok=True)
@@ -141,7 +151,7 @@ def run_suite(args, suite, limit=None):
     done = len(expanded) - len(pending)
     if limit is not None:
         pending = pending[:limit]
-    logging.info(
+    logger.info(
         "suite=%s planned=%d completed=%d batch=%d",
         suite,
         len(expanded),
@@ -152,16 +162,17 @@ def run_suite(args, suite, limit=None):
     with threadpool_limits(limits=1):
         warmup()
         for index, job in enumerate(pending, 1):
-            execute(
-                job,
-                str(directory / "cache.sqlite"),
-                str(ROOT / "data/upstream"),
-                implementation,
-            )
+            with timing_slot(args.output / "paper"):
+                execute(
+                    job,
+                    str(directory / "cache.sqlite"),
+                    str(ROOT / "data/upstream"),
+                    implementation,
+                )
             if args.methods and index % min(runtime["batch_size"][suite], 20) == 0:
                 render(args.output, suite, config, implementation)
             elapsed = time.perf_counter() - started
-            logging.info(
+            logger.info(
                 "suite=%s progress=%d/%d batch=%d/%d elapsed=%.1fs estimated_remaining=%.1fs",
                 suite,
                 done + index,
@@ -177,6 +188,11 @@ def run_suite(args, suite, limit=None):
 
 def worker(args):
     suite = args.suite
+    if suite != "all" and paper_suite(args, suite):
+        from src.paper.protocol import invoke
+
+        invoke(args, suite)
+        return
     if suite == "all":
         raise ValueError("worker requires one --suite")
     setup_logging(args.output, suite)
@@ -190,14 +206,14 @@ def worker(args):
     batch = runtime["batch_size"][suite]
     if count_completed(args.output, suite) >= total:
         render(args.output, suite, config, cache_implementation(args.output, suite))
-        logging.info("suite=%s complete", suite)
+        logger.info("suite=%s complete", suite)
         return
     while count_completed(args.output, suite) < total:
         if shutil.disk_usage(args.output.parent).free < 5 * 1024**3:
             raise RuntimeError("Fewer than 5 GiB remain; free space and resume")
         done, total = run_suite(args, suite, batch)
-        logging.info("suite=%s checkpointed=%d/%d", suite, done, total)
-    logging.info("suite=%s complete", suite)
+        logger.info("suite=%s checkpointed=%d/%d", suite, done, total)
+    logger.info("suite=%s complete", suite)
 
 
 def session_name(suite):
@@ -225,9 +241,11 @@ def start(args):
             subprocess.run(["tmux", "kill-session", "-t", f"={name}"], check=True)
         command = shlex.join(
             [
-                sys.executable,
+                str(ROOT / ".paper-venv/bin/python")
+                if paper_suite(args, suite)
+                else sys.executable,
                 str(ROOT / "main.py"),
-                "worker",
+                "paper" if paper_suite(args, suite) else "worker",
                 "--suite",
                 suite,
                 "--config",
@@ -267,7 +285,12 @@ def suite_sessions(suite):
 def status(args):
     selected = SUITES if args.suite == "all" else (args.suite,)
     for suite in selected:
-        config, runtime = configuration(args.config, suite)
+        config, _runtime = configuration(args.config, suite)
+        if config.get("protocol") == "paper-v1":
+            from src.paper.protocol import print_status
+
+            print_status(args, suite)
+            continue
         total = sum(1 for _ in jobs(config))
         done = count_completed(args.output, suite)
         state = "complete" if done >= total else "not running"
@@ -285,6 +308,10 @@ def status(args):
         )
 
 
+def paper_suite(args, suite):
+    return configuration(args.config, suite)[0].get("protocol") == "paper-v1"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run resumable sparse Hadamard comparisons and generate nine consolidated figures."
@@ -293,13 +320,26 @@ def main():
         "command",
         nargs="?",
         default="run",
-        choices=["run", "start", "status", "stop", "plot", "plan", "fetch", "worker"],
+        choices=[
+            "run",
+            "start",
+            "status",
+            "stop",
+            "plot",
+            "plan",
+            "fetch",
+            "worker",
+            "paper",
+        ],
     )
     parser.add_argument("--suite", default="all", choices=["all", *SUITES])
     parser.add_argument("--config", type=Path, default=ROOT / "config.json")
     parser.add_argument("--output", type=Path, default=ROOT / "results")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--methods", nargs="+")
+    parser.add_argument(
+        "--paper-stage", default="run", choices=["run", "prepare", "plot", "status"]
+    )
     args = parser.parse_args()
     if args.methods and (args.command != "run" or args.suite == "all"):
         parser.error("--methods requires run and one --suite")
@@ -310,7 +350,15 @@ def main():
     args.config = args.config.resolve()
     args.output = args.output.resolve()
     selected = SUITES if args.suite == "all" else (args.suite,)
-    if args.command == "start":
+    if args.command == "paper":
+        from src.paper.protocol import invoke
+
+        paper_selected = ("graphs", "scaling") if args.suite == "all" else (args.suite,)
+        if any(suite not in {"graphs", "scaling"} for suite in paper_selected):
+            parser.error("The paper protocol applies to graphs and scaling")
+        for suite in paper_selected:
+            invoke(args, suite, args.paper_stage)
+    elif args.command == "start":
         start(args)
     elif args.command == "status":
         status(args)
@@ -339,12 +387,17 @@ def main():
         worker(args)
     elif args.command == "plot":
         for suite in selected:
-            render(
-                args.output,
-                suite,
-                configuration(args.config, suite)[0],
-                cache_implementation(args.output, suite),
-            )
+            if paper_suite(args, suite):
+                from src.paper.protocol import invoke
+
+                invoke(args, suite, "plot")
+            else:
+                render(
+                    args.output,
+                    suite,
+                    configuration(args.config, suite)[0],
+                    cache_implementation(args.output, suite),
+                )
     else:
         if args.limit is not None and (args.suite == "all" or args.limit < 1):
             parser.error("--limit requires one --suite and a positive number")
