@@ -471,7 +471,9 @@ def comparison_style():
     )
 
 
-def comparison_legend(figure, axes, directory, name, methods=COMPARISON_METHODS):
+def comparison_legend(
+    figure, axes, directory, name, methods=COMPARISON_METHODS, headings=()
+):
     methods = sorted(
         methods, key=lambda method: LABELS[method].startswith("SPHT (Ours)")
     )
@@ -486,7 +488,10 @@ def comparison_legend(figure, axes, directory, name, methods=COMPARISON_METHODS)
         ncol=len(methods),
         frameon=False,
     )
-    figure.tight_layout(rect=(0, 0.13, 1, 1), pad=1.0, w_pad=1.0)
+    figure.tight_layout(rect=(0, 0.13, 1, 0.9 if headings else 1), pad=1.0, w_pad=1.0)
+    for first, last, text in headings:
+        center = (axes[first].get_position().x0 + axes[last].get_position().x1) / 2
+        figure.text(center, 0.97, text, ha="center", va="top", fontsize=14)
     save_figure(figure, directory, name)
 
 
@@ -528,7 +533,16 @@ def plot_graph_comparison(results, summaries, directory):
             axis.set(xlabel=xlabel, ylabel=ylabel, yscale="log")
             axis.xaxis.set_major_locator(MaxNLocator(nbins=4))
             axis.yaxis.set_minor_formatter(NullFormatter())
-        comparison_legend(figure, axes, directory, "graphs")
+        headings = []
+        for first, last, kind, key, label in [
+            (0, 1, "graph_edges", "dimension", "Vertices"),
+            (2, 3, "graph_vertices", "edges", "Edges"),
+        ]:
+            values = sorted({row[key] for row in summaries if row["kind"] == kind})
+            if values:
+                text = label + " = " + ", ".join(f"{int(value):,}" for value in values)
+                headings.append((first, last, text))
+        comparison_legend(figure, axes, directory, "graphs", headings=headings)
         figure, axis = plt.subplots(figsize=(8, 4.2))
         kinds = ["graph_edges", "graph_vertices"]
         for index, method in enumerate(COMPARISON_METHODS):
