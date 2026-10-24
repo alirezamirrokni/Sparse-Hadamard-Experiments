@@ -7,9 +7,9 @@ import types
 
 import numpy as np
 
-from .. import originals
-from ..algebra import fwht
-from ..originals import read_source as checked_source
+from .. import data as originals
+from ..data import read_source as checked_source
+from ..numerics import fwht
 
 
 def recover_graph(oracle, dimension, edges, settings):

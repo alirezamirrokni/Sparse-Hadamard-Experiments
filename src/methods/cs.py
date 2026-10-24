@@ -3,10 +3,15 @@ from functools import lru_cache
 
 import numpy as np
 
-from ..algebra import bits, top_indices
-from ..metrics import sparse_result
-from ..operators import CosetOperator, DegreeOperator
-from ..solvers import debias, solve
+from ..numerics import (
+    CosetOperator,
+    DegreeOperator,
+    bits,
+    debias,
+    solve,
+    sparse_result,
+    top_indices,
+)
 
 
 @lru_cache(maxsize=1)
@@ -18,7 +23,7 @@ def prepare():
 
 @lru_cache(maxsize=24)
 def dictionary(dimension, degree, graph, max_columns):
-    from ..algebra import degree_dictionary
+    from ..numerics import degree_dictionary
 
     if graph:
         if 1 + dimension * (dimension - 1) // 2 > max_columns:
@@ -108,7 +113,7 @@ def recover(
 def global_recover(
     oracle, dimension, sparsity, rows, settings, store, key, seed, degree=None
 ):
-    from ..algebra import degree_dictionary
+    from ..numerics import degree_dictionary
 
     rng = np.random.default_rng(seed)
     if degree is None:

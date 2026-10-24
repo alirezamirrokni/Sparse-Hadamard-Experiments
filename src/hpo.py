@@ -14,12 +14,16 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from .algebra import bits, degree_dictionary, top_indices, tuple_characters
+from .data import BudgetExceeded, Oracle, digest, random_signal
 from .methods.spht import prefix_recover
-from .operators import DegreeOperator
-from .signals import random_signal
-from .solvers import solve
-from .storage import BudgetExceeded, Oracle, digest
+from .numerics import (
+    DegreeOperator,
+    bits,
+    degree_dictionary,
+    solve,
+    top_indices,
+    tuple_characters,
+)
 
 
 class DigitsTask:

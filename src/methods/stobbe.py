@@ -3,11 +3,15 @@ import math
 import numpy as np
 from sklearn.linear_model import Lasso
 
-from .. import originals
-from ..algebra import bits, top_indices
-from ..metrics import sparse_result
-from ..operators import CosetOperator, materialize
-from ..solvers import debias
+from .. import data as originals
+from ..numerics import (
+    CosetOperator,
+    bits,
+    debias,
+    materialize,
+    sparse_result,
+    top_indices,
+)
 
 
 def recover_graph(oracle, dimension, edges, settings):

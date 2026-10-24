@@ -27,7 +27,7 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import norm
 
 from .config import CONFIG
-from .storage import Store, atomic_text, canonical, digest
+from .data import Store, atomic_text, canonical, digest
 
 
 def save_figure(figure, directory, name):

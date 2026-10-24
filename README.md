@@ -9,31 +9,20 @@ main.py
 requirements.lock
 requirements-phase.lock
 src/
+    config.py
+    experiments.py
+    plotting.py
+    hpo.py
+    data.py
+    numerics.py
     methods/
         spht.py
         cs.py
         swht.py
         stobbe.py
-        bch.py
-    config.py
-    runner.py
-    experiments.py
-    evaluation.py
-    plotting.py
-    originals.py
-    sources.py
-    scheduling.py
-    storage.py
-    algebra.py
-    kernels.py
-    operators.py
-    solvers.py
-    signals.py
-    metrics.py
-    hpo.py
 ```
 
-`src/config.py` contains experiment settings. `src/methods/` contains the four recovery methods and SPHT's BCH helper. The remaining modules provide experiment generation, evaluation, plotting, data access, and shared numerical operations. `main.py` is the entry point.
+`main.py` provides the command-line interface and experiment runner. `src/config.py` holds settings, `experiments.py` generates and evaluates trials, and `plotting.py` produces figures. `data.py` handles datasets, original-source verification, caching, and measurement scheduling. `numerics.py` contains shared transforms, operators, solvers, and recovery metrics. `hpo.py` contains the HPO experiments. Each recovery method has one file under `src/methods/`; SPHT includes its BCH helper.
 
 ## Setup
 
