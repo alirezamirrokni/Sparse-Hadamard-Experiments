@@ -124,6 +124,8 @@ def run_suite(args, suite, limit=None):
     }
     store.close()
     expanded = list(jobs(config))
+    if args.methods:
+        expanded = [job for job in expanded if job["method"] in args.methods]
     pending = [
         job
         for job in expanded
@@ -156,6 +158,8 @@ def run_suite(args, suite, limit=None):
                 str(ROOT / "data/upstream"),
                 implementation,
             )
+            if args.methods and index % min(runtime["batch_size"][suite], 20) == 0:
+                render(args.output, suite, config, implementation)
             elapsed = time.perf_counter() - started
             logging.info(
                 "suite=%s progress=%d/%d batch=%d/%d elapsed=%.1fs estimated_remaining=%.1fs",
@@ -243,6 +247,23 @@ def start(args):
         print(f"{name}: started")
 
 
+def suite_sessions(suite):
+    if not shutil.which("tmux"):
+        return []
+    result = subprocess.run(
+        ["tmux", "list-sessions", "-F", "#{session_name}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    base = session_name(suite)
+    return [
+        name
+        for name in result.stdout.splitlines()
+        if name == base or name.startswith(base + "-")
+    ]
+
+
 def status(args):
     selected = SUITES if args.suite == "all" else (args.suite,)
     for suite in selected:
@@ -250,16 +271,9 @@ def status(args):
         total = sum(1 for _ in jobs(config))
         done = count_completed(args.output, suite)
         state = "complete" if done >= total else "not running"
-        if shutil.which("tmux"):
+        for name in suite_sessions(suite):
             pane = subprocess.run(
-                [
-                    "tmux",
-                    "display-message",
-                    "-p",
-                    "-t",
-                    f"{session_name(suite)}:0.0",
-                    "#{pane_dead}",
-                ],
+                ["tmux", "display-message", "-p", "-t", f"{name}:0.0", "#{pane_dead}"],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -273,7 +287,7 @@ def status(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run resumable sparse Hadamard comparisons and generate seven consolidated figures."
+        description="Run resumable sparse Hadamard comparisons and generate eight consolidated figures."
     )
     parser.add_argument(
         "command",
@@ -285,7 +299,14 @@ def main():
     parser.add_argument("--config", type=Path, default=ROOT / "config.json")
     parser.add_argument("--output", type=Path, default=ROOT / "results")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--methods", nargs="+")
     args = parser.parse_args()
+    if args.methods and (args.command != "run" or args.suite == "all"):
+        parser.error("--methods requires run and one --suite")
+    if args.methods:
+        available = configuration(args.config, args.suite)[0]["methods"]
+        if not set(args.methods) <= set(available):
+            parser.error("Unknown method in --methods")
     args.config = args.config.resolve()
     args.output = args.output.resolve()
     selected = SUITES if args.suite == "all" else (args.suite,)
@@ -295,11 +316,12 @@ def main():
         status(args)
     elif args.command == "stop":
         for suite in selected:
-            subprocess.run(
-                ["tmux", "kill-session", "-t", f"={session_name(suite)}"],
-                capture_output=True,
-                check=False,
-            )
+            for name in suite_sessions(suite):
+                subprocess.run(
+                    ["tmux", "kill-session", "-t", f"={name}"],
+                    capture_output=True,
+                    check=False,
+                )
     elif args.command == "fetch":
         fetch_sources(ROOT / "data/upstream")
     elif args.command == "plan":
@@ -309,7 +331,7 @@ def main():
         }
         print(
             json.dumps(
-                {"trials": counts, "total": sum(counts.values()), "maximum_figures": 7},
+                {"trials": counts, "total": sum(counts.values()), "maximum_figures": 8},
                 indent=2,
             )
         )
@@ -326,7 +348,10 @@ def main():
     else:
         if args.limit is not None and (args.suite == "all" or args.limit < 1):
             parser.error("--limit requires one --suite and a positive number")
-        setup_logging(args.output, "main")
+        setup_logging(
+            args.output,
+            args.suite + "-" + "-".join(args.methods) if args.methods else "main",
+        )
         if "graphs" in selected:
             fetch_sources(ROOT / "data/upstream")
         for suite in selected:

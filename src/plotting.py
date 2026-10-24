@@ -14,7 +14,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from matplotlib.ticker import LogLocator, MaxNLocator, NullFormatter, ScalarFormatter
+from matplotlib.lines import Line2D
+from matplotlib.ticker import (
+    LogFormatterMathtext,
+    LogLocator,
+    MaxNLocator,
+    NullFormatter,
+    ScalarFormatter,
+)
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import norm
 
@@ -150,17 +157,22 @@ def write_csv(path, rows):
     atomic_text(path, stream.getvalue())
 
 
+COMPARISON_METHODS = ("cs", "prefix_bch", "stobbe", "swht")
+COMPARISON_PALETTE = {
+    "cs": "#596574",
+    "prefix": "#2563A6",
+    "prefix_bch": "#2563A6",
+    "prefix_robust": "#2563A6",
+    "stobbe": "#1B9E77",
+    "swht": "#D98324",
+}
 COLORS = {
-    "cs": "#222222",
-    "prefix": "#2478b5",
-    "prefix_bch": "#2478b5",
-    "prefix_robust": "#2478b5",
-    "swht": "#e69f00",
-    "stobbe": "#c44e52",
+    **COMPARISON_PALETTE,
     "random": "#777777",
     "gp_ei": "#9467bd",
     "harmonica": "#e69f00",
 }
+
 LABELS = {
     "cs": "CS",
     "prefix": "SPHT",
@@ -393,14 +405,23 @@ def plot_phase_comparisons(results, config, directory):
                     xlabel=r"Query fraction $Q/N$" if row_index else "",
                 )
                 if column == 0:
-                    axis.set_ylabel(LABELS[method])
+                    axis.set_ylabel(r"Sparsity fraction $k/Q$", labelpad=45)
+                    axis.annotate(
+                        LABELS[method],
+                        xy=(0, 0.5),
+                        xycoords="axes fraction",
+                        xytext=(-42, 0),
+                        textcoords="offset points",
+                        rotation=90,
+                        va="center",
+                        ha="center",
+                    )
                 axis.set_xticks([0.01, 0.04, 0.08] if sparse else [0.2, 0.5, 0.8])
                 axis.set_yticks([0.05, 0.1, 0.15] if sparse else [0.2, 0.5, 0.8])
                 if column > 0:
                     axis.tick_params(labelleft=False)
                 if row_index == 0:
                     axis.set_title(f"N = {2**size:,}\n{distribution.title()}")
-        figure.supylabel(r"Sparsity fraction $k/Q$")
         figure.colorbar(
             mesh,
             ax=axes.ravel().tolist(),
@@ -434,152 +455,98 @@ def graph_operating_points(summaries):
     ]
 
 
+def comparison_style():
+    return plt.rc_context(
+        {
+            **sns.axes_style("darkgrid"),
+            "font.family": "serif",
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+        }
+    )
+
+
+def comparison_legend(figure, axes, directory, name, methods=COMPARISON_METHODS):
+    handles = [
+        Line2D([0], [0], color=COLORS[method], lw=2.4, marker="o", label=LABELS[method])
+        for method in methods
+    ]
+    figure.legend(
+        handles=handles,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.01),
+        ncol=len(methods),
+        frameon=False,
+    )
+    figure.tight_layout(rect=(0, 0.13, 1, 1), pad=1.0, w_pad=1.0)
+    save_figure(figure, directory, name)
+
+
 def plot_graph_comparison(results, summaries, directory):
-    figure, axes = plt.subplots(2, 4, figsize=(19, 9.5))
     selected = graph_operating_points(summaries)
-    methods = ["swht", "stobbe", "prefix_bch"]
-    settings = [
+    panels = [
+        ("graph_edges", "edges", "algorithm_seconds_median", "Edges", "Runtime (s)"),
+        ("graph_edges", "edges", "queries_median", "Edges", "Oracle queries"),
         (
-            axes[0, 0],
-            "graph_edges",
-            "edges",
-            "algorithm_seconds_median",
-            "Edges",
-            "Runtime (s)",
-        ),
-        (
-            axes[0, 1],
-            "graph_edges",
-            "edges",
-            "queries_median",
-            "Edges",
-            "Oracle queries",
-        ),
-        (
-            axes[0, 2],
             "graph_vertices",
             "dimension",
             "algorithm_seconds_median",
             "Vertices",
             "Runtime (s)",
         ),
-        (
-            axes[0, 3],
-            "graph_vertices",
-            "dimension",
-            "queries_median",
-            "Vertices",
-            "Oracle queries",
-        ),
-        (
-            axes[1, 1],
-            "graph_exploratory_edges",
-            "edges",
-            "algorithm_seconds_median",
-            "Edges",
-            "Runtime (s)",
-        ),
-        (
-            axes[1, 2],
-            "graph_exploratory_vertices",
-            "dimension",
-            "algorithm_seconds_median",
-            "Vertices",
-            "Runtime (s)",
-        ),
+        ("graph_vertices", "dimension", "queries_median", "Vertices", "Oracle queries"),
     ]
-    for axis, kind, xkey, metric, xlabel, ylabel in settings:
-        for method in methods:
-            groups = defaultdict(list)
-            for row in selected:
-                if row["kind"] == kind and row["method"] == method and metric in row:
-                    groups[row[xkey]].append(row[metric])
-            if groups:
-                xs = sorted(groups)
-                axis.plot(
-                    xs,
-                    [np.median(groups[x]) for x in xs],
-                    "-o",
-                    ms=3,
-                    color=COLORS[method],
-                    label=LABELS[method],
-                )
-        axis.set(
-            xlabel=xlabel,
-            ylabel=ylabel,
-            yscale="log",
-            title=kind.replace("graph_", "").replace("_", " ").title(),
-        )
-    axis = axes[1, 0]
-    for method in methods:
-        rows = [
-            r
-            for r in results
-            if r["job"]["spec"]["kind"] == "graph_reconstruction"
-            and r["job"]["method"] == method
-            and "edge_error" in r
-        ]
-        if rows:
-            axis.scatter(
-                [r["queries"] for r in rows],
-                [r["edge_error"] for r in rows],
-                s=12,
-                alpha=0.45,
+    with comparison_style():
+        figure, axes = plt.subplots(1, 4, figsize=(18, 4.8))
+        for axis, (kind, xkey, metric, xlabel, ylabel) in zip(axes, panels):
+            for method in COMPARISON_METHODS:
+                groups = defaultdict(list)
+                for row in selected:
+                    if (
+                        row["kind"] == kind
+                        and row["method"] == method
+                        and metric in row
+                    ):
+                        groups[row[xkey]].append(row[metric])
+                if groups:
+                    xs = sorted(groups)
+                    axis.plot(
+                        xs,
+                        [np.median(groups[x]) for x in xs],
+                        "-o",
+                        ms=5,
+                        color=COLORS[method],
+                    )
+            axis.set(xlabel=xlabel, ylabel=ylabel, yscale="log")
+            axis.xaxis.set_major_locator(MaxNLocator(nbins=4))
+            axis.yaxis.set_minor_formatter(NullFormatter())
+        comparison_legend(figure, axes, directory, "graphs")
+        figure, axis = plt.subplots(figsize=(8, 4.2))
+        kinds = ["graph_edges", "graph_vertices"]
+        for index, method in enumerate(COMPARISON_METHODS):
+            values = []
+            for kind in kinds:
+                rows = [
+                    r
+                    for r in results
+                    if r["job"]["method"] == method
+                    and r["job"]["spec"]["kind"] == kind
+                    and r["status"] in ASSESSED
+                ]
+                values.append(np.mean([r["success"] for r in rows]) if rows else np.nan)
+            axis.barh(
+                np.arange(2) + (index - 1.5) * 0.19,
+                values,
+                height=0.18,
                 color=COLORS[method],
-                label=LABELS[method],
             )
-    axis.set(
-        xlabel="Oracle queries",
-        ylabel="Symmetric edge error / true edges",
-        xscale="log",
-        title="Reconstruction: all tested settings",
-    )
-    axis = axes[1, 3]
-    kinds = [
-        "graph_edges",
-        "graph_vertices",
-        "graph_reconstruction",
-        "graph_exploratory_edges",
-        "graph_exploratory_vertices",
-    ]
-    for index, method in enumerate(methods):
-        values = []
-        for kind in kinds:
-            rows = [
-                r
-                for r in results
-                if r["job"]["method"] == method
-                and r["job"]["spec"]["kind"] == kind
-                and r["status"] in ASSESSED
-            ]
-            values.append(np.mean([r["success"] for r in rows]) if rows else np.nan)
-        axis.barh(
-            np.arange(len(kinds)) + (index - 1) * 0.23,
-            values,
-            height=0.22,
-            color=COLORS[method],
-            label=LABELS[method],
+        axis.set(
+            yticks=np.arange(2),
+            yticklabels=["Edges", "Vertices"],
+            xlim=(0, 1),
+            xlabel="Exact recovery fraction",
         )
-    axis.set(
-        yticks=np.arange(5),
-        yticklabels=[
-            "Edges",
-            "Vertices",
-            "Reconstruction",
-            "Expl. edges",
-            "Expl. vertices",
-        ],
-        xlim=(0, 1),
-        xlabel="Recovery fraction",
-        title="All settings, before operating-point selection",
-    )
-    finish(
-        figure,
-        axes,
-        "Graph recovery: runtime, sampling, and reconstruction",
-        directory,
-        "graphs",
-    )
+        comparison_legend(figure, [axis], directory, "graph_recovery")
 
 
 def matched_successes(results):
@@ -723,32 +690,10 @@ def plot_scaling_comparison(results, directory):
     )
 
 
-def robust_legend(figure, axes, directory, name):
-    handles, labels = axes[0].get_legend_handles_labels()
-    figure.legend(
-        handles,
-        labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.01),
-        ncol=len(labels),
-        frameon=False,
-    )
-    figure.tight_layout(rect=(0, 0.13, 1, 1), pad=1.0, w_pad=1.0)
-    save_figure(figure, directory, name)
-
-
 def plot_robust_comparison(results, directory):
-    palette = {"cs": "#333333", "prefix_robust": sns.color_palette("dark")[0]}
-    with (
-        sns.axes_style("darkgrid"),
-        plt.rc_context(
-            {
-                "axes.spines.top": False,
-                "axes.spines.right": False,
-                "font.family": "serif",
-            }
-        ),
-    ):
+    methods = ("cs", "prefix_robust", "stobbe", "swht")
+    palette = COMPARISON_PALETTE
+    with comparison_style():
         figure, axes = plt.subplots(1, 3, figsize=(15, 4.6), sharey=True)
         groups = defaultdict(list)
         for record in results:
@@ -768,7 +713,7 @@ def plot_robust_comparison(results, directory):
         )
         for column, sparsity in enumerate([8, 16, 32]):
             axis = axes[column]
-            for method in ["cs", "prefix_robust"]:
+            for method in methods:
                 rows = [
                     r
                     for r in results
@@ -791,12 +736,18 @@ def plot_robust_comparison(results, directory):
                 ylim=limits,
                 title=f"k = {sparsity}",
             )
-            axis.yaxis.set_major_locator(LogLocator(base=10, subs=(2, 3, 4, 5, 6, 8)))
-            axis.yaxis.set_major_formatter(ScalarFormatter())
+            if limits[1] / limits[0] >= 10:
+                axis.yaxis.set_major_locator(LogLocator(base=10, numticks=6))
+                axis.yaxis.set_major_formatter(LogFormatterMathtext())
+            else:
+                axis.yaxis.set_major_locator(
+                    LogLocator(base=10, subs=(2, 3, 4, 5, 6, 8))
+                )
+                axis.yaxis.set_major_formatter(ScalarFormatter())
             axis.yaxis.set_minor_formatter(NullFormatter())
-        robust_legend(figure, axes, directory, "robustness_error")
+        comparison_legend(figure, axes, directory, "robustness_error", methods)
         figure, axes = plt.subplots(1, 3, figsize=(15, 4.6))
-        for method in ["cs", "prefix_robust"]:
+        for method in methods:
             rows = [r for r in results if r["job"]["method"] == method]
             assessed = [
                 {**r, "within_bound": r["error_over_E"] <= 4}
@@ -845,7 +796,7 @@ def plot_robust_comparison(results, directory):
         axes[1].yaxis.set_minor_formatter(NullFormatter())
         for axis in axes[1:]:
             axis.set_xticks([8, 16, 32])
-        robust_legend(figure, axes, directory, "robustness_cost")
+        comparison_legend(figure, axes, directory, "robustness_cost", methods)
 
 
 def plot_trace(axis, rows, method, time_axis=False):

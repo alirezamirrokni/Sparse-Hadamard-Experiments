@@ -18,17 +18,18 @@ tmux attach -t sht-phase
 .venv/bin/python main.py stop
 ```
 
-Use `.venv/bin/python main.py` to run everything sequentially in the foreground. Individual suites are available through `--suite phase`, `graphs`, `scaling`, `robust`, or `hpo`. `main.py plan` prints the trial counts, and `main.py plot` refreshes the figures from completed results.
+Use `.venv/bin/python main.py` to run everything sequentially in the foreground. Individual suites are available through `--suite phase`, `graphs`, `scaling`, `robust`, or `hpo`. `main.py plan` prints the trial counts, and `main.py plot` refreshes the figures from completed results. To run only newly added methods, use `.venv/bin/python main.py run --suite graphs --methods cs` or `.venv/bin/python main.py run --suite robust --methods stobbe swht`; these commands resume their own completed trials without running other methods.
 
-## Seven figures, saved as PNG and PDF
+## Eight figures, saved as PNG and PDF
 
-Every update overwrites the same seven named figure pairs under `results/figures/`.
+Every update overwrites the same eight named figure pairs under `results/figures/`.
 
 | Figure | Panels |
 | --- | --- |
 | `phase_diagrams` | CS in the top row and SPHT in the bottom row; columns vary domain size and coefficient distribution |
 | `phase_sparse` | The same comparison at larger domains and smaller query fractions |
-| `graphs` | Principal edge/vertex sweeps, reconstruction error, and both exploratory upstream sweeps |
+| `graphs` | Runtime and query counts for the principal edge and vertex sweeps |
+| `graph_recovery` | Exact-recovery fractions for the two principal graph sweeps |
 | `scaling` | Runtime, query counts, and recovery quality; unrestricted and low-degree spectra |
 | `robustness_error` | Recovery error divided by the mixed-norm tail budget, shown on log scales |
 | `robustness_cost` | Fraction within the 4E target, query counts, and runtime |
@@ -40,11 +41,11 @@ There is no separate DCT/Fourier reproduction of the historical Figure 3, and no
 
 Phase experiments use equal total distinct-query budgets for CS and prefix recovery, including validation queries. They pair generated spectra across methods. The main grids use ten repetitions and the sparse grids five. Cells are visited before repetitions are added, so the comparison develops across the whole grid early. Recovery means relative coefficient error at most `1e-6` after common support debiasing.
 
-The largest unrestricted domain is `N = 2^20`. Low-degree experiments reach 800 Boolean variables, and exploratory graphs reach 1,000. These implicit domains are handled through BCH reduction. Resource-limited global baselines are recorded separately, rather than converted into failed numerical recoveries. Scaling runtimes use jointly successful CS/prefix instances; recovery panels and CSV tables show quality alongside timing.
+The largest unrestricted domain is `N = 2^20`. Low-degree experiments and the principal graph sweeps reach 800 Boolean variables. These implicit domains are handled through BCH reduction. Resource-limited global baselines are recorded separately, rather than converted into failed numerical recoveries. Scaling runtimes use jointly successful CS/prefix instances; recovery panels and CSV tables show quality alongside timing.
 
-The graph suite retains the principal runners, reconstruction experiments, and both exploratory sweeps of the upstream repository. Operating points select the fastest tested setting with observed recovery of at least 90%; they are descriptive selections, not held-out estimates. All tested settings contribute to the recovery and reconstruction panels. Upstream snapshots and the three executed SWHT source files are pinned and checksum verified.
+The graph suite contains only the principal edge and vertex sweeps. It compares CS basis pursuit, SPHT, the Stobbe degree-two Lasso baseline, and upstream SWHT. CS and Stobbe use the known constant-plus-pairwise cut-function dictionary. CS uses sampling factor 2.4 and a 300-second solver cap; its timeouts are reported as resource-limited, not recovery failures. Operating points select the fastest tested setting with observed recovery of at least 90%; they are descriptive selections, not held-out estimates. The separate recovery figure uses all assessed settings. Missing measurements are omitted, not recorded as zero. Upstream snapshots and the three executed SWHT source files are pinned and checksum verified. Graphs and robustness share a slate/blue/green/orange palette for CS/SPHT/Stobbe/SWHT and one horizontal legend below each figure.
 
-The robust method keeps the same coarse-IHT, residual-subtraction, median-of-means, and coordinate-retention architecture. Its practical settings use sampling factor 8, retention 4k, nine median groups of 8k samples, and up to 1,000 coarse iterations. These reduced constants were selected on separate calibration seeds and passed 36/36 held-out checks, compared with 23/36 and 26/36 for the previous practical settings. This finite check does not certify the manuscript's worst-case guarantee. New production results use separate instances.
+The robust method keeps the same coarse-IHT, residual-subtraction, median-of-means, and coordinate-retention architecture. Its practical settings use sampling factor 8, retention 4k, nine median groups of 8k samples, and up to 1,000 coarse iterations. These reduced constants were selected on separate calibration seeds and passed 36/36 held-out checks, compared with 23/36 and 26/36 for the previous practical settings. This finite check does not certify the manuscript's worst-case guarantee. New production results use separate instances. Robustness also evaluates upstream SWHT on the same approximately sparse signals and the Stobbe Lasso objective over the full Hadamard dictionary, using the same sample count and regularization as CS. Stobbe and CS use common top-k least-squares debiasing. SWHT is the upstream implementation evaluated under spectral tails; this does not assert that it implements the paper's separate robust algorithm. Query costs are reported for every method.
 
 HPO compares Random Search, GP expected improvement, Harmonica, and SPHT at equal unique-evaluation budgets. Digits uses fixed validation/test splits per replicate and excludes dummy variables from objective-cache keys. It is a real classifier-training workload, not a reproduction of historical CIFAR GPU timings. Synthetic sparse and hierarchical objectives include both configured noise levels. The Harmonica baseline may cache up to 2 GiB of its dictionary to avoid repeatedly regenerating a large matrix.
 

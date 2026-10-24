@@ -7,6 +7,7 @@ import numpy as np
 from sklearn.linear_model import Lasso
 
 from .algebra import warmup
+from .baselines import graph_cs_recover, stobbe_robust_recover
 from .hpo import run_hpo
 from .operators import DegreeOperator, materialize
 from .recovery import coefficient_error, global_recover, prefix_recover, sparse_result
@@ -76,7 +77,7 @@ def jobs(config):
                                     config, experiment, method, parameters
                                 ),
                             }
-        elif kind.startswith("graph"):
+        elif kind in {"graph_edges", "graph_vertices"}:
             for snapshot in experiment.get("snapshots", [1, 3, 5, 7]):
                 if "vertices" in kind:
                     cells = [
@@ -84,8 +85,6 @@ def jobs(config):
                         for n in experiment["vertices"]
                         if snapshot != 5 or n >= 70
                     ]
-                elif "reconstruction" in kind:
-                    cells = [(experiment.get("vertices", 70), -1)]
                 else:
                     cells = [
                         (experiment.get("vertices", 100), e)
@@ -294,11 +293,24 @@ def execute(job, database, upstream_directory, implementation):
                 )
             elif method == "swht":
                 result = swht_recover(
-                    oracle, dimension, sparsity - 1, settings, upstream_directory, seed
+                    oracle,
+                    dimension,
+                    sparsity - 1 if spec["kind"].startswith("graph") else sparsity,
+                    settings,
+                    upstream_directory,
+                    seed,
+                )
+            elif method == "stobbe" and spec["kind"] == "robust":
+                result = stobbe_robust_recover(
+                    oracle, dimension, sparsity, rows, settings, seed + 1709
                 )
             elif method == "stobbe":
                 result = stobbe_recover(
                     oracle, dimension, sparsity - 1, settings, store, key, seed
+                )
+            elif method == "cs" and spec["kind"].startswith("graph"):
+                result = graph_cs_recover(
+                    oracle, dimension, sparsity, rows, settings, store, key, seed + 1709
                 )
             else:
                 result = global_recover(
