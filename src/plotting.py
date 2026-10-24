@@ -422,7 +422,11 @@ def plot_phase_comparisons(results, config, directory):
                         LABELS[method] + "\n" + r"Sparsity fraction $k/Q$", labelpad=12
                     )
                 axis.set_xticks([0.01, 0.04, 0.08] if sparse else [0.2, 0.5, 0.8])
-                axis.set_yticks([0.05, 0.1, 0.15] if sparse else [0.2, 0.5, 0.8])
+                axis.set_yticks(
+                    ([0.1, 0.2, 0.3] if max(rhos) > 0.15 else [0.05, 0.1, 0.15])
+                    if sparse
+                    else [0.2, 0.5, 0.8]
+                )
                 if column > 0:
                     axis.tick_params(labelleft=False)
                 if row_index == 0:

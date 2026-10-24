@@ -147,10 +147,10 @@
         },
         "prefix_bch": {
           "solver": "bp",
-          "initial_factor": 2.0,
-          "initial_offset": 1,
-          "extension_factor": 1.0,
-          "sample_factor": 2.4,
+          "initial_factor": 1.5,
+          "initial_offset": 0,
+          "extension_factor": 0.75,
+          "sample_factor": 1.5,
           "validated": true,
           "validation_factor": 0.25,
           "validation_min": 8,
@@ -199,15 +199,6 @@
                 2.5,
                 3.0
               ]
-            },
-            "prefix_bch": {
-              "sample_factor": [
-                1.5,
-                2.0,
-                2.5,
-                3.0,
-                4.0
-              ]
             }
           }
         },
@@ -250,15 +241,6 @@
                 2.0,
                 2.5,
                 3.0
-              ]
-            },
-            "prefix_bch": {
-              "sample_factor": [
-                1.5,
-                2.0,
-                2.5,
-                3.0,
-                4.0
               ]
             }
           },
