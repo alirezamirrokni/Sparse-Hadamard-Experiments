@@ -81,7 +81,9 @@ def prefix_recover(
     degree=None,
     robust=False,
     tail_budget=None,
+    local_solver=None,
 ):
+    local_solver = solve if local_solver is None else local_solver
     preprocessing_started = time.perf_counter()
     rng = np.random.default_rng(seed)
     if degree is None:
@@ -97,8 +99,6 @@ def prefix_recover(
         reduction = code.matrix
         decoder = code.decode
         internal = code.rank
-    mix, inverse = random_invertible(internal, rng)
-    query_map = (mix @ reduction) % 2
     initial_bits = min(
         internal,
         max(
@@ -107,6 +107,15 @@ def prefix_recover(
             + settings.get("initial_offset", 1),
         ),
     )
+    identity_mix = (
+        settings.get("full_stage_identity", False) and initial_bits == internal
+    )
+    if identity_mix:
+        inverse = np.eye(internal, dtype=np.uint8)
+        query_map = reduction
+    else:
+        mix, inverse = random_invertible(internal, rng)
+        query_map = (mix @ reduction) % 2
     width = max(
         1,
         math.ceil(
@@ -145,9 +154,10 @@ def prefix_recover(
             natural = max(
                 1.0, sparsity * math.log(max(math.e, columns / max(1, sparsity)))
             )
-            desired = max(
-                sparsity + 1, math.ceil(settings.get("sample_factor", 2.4) * natural)
-            )
+            factor = settings.get("sample_factor", 2.4)
+            if len(levels) == 1:
+                factor = settings.get("full_stage_sample_factor", factor)
+            desired = max(sparsity + 1, math.ceil(factor * natural))
             allocated = None
             if oracle.budget is not None:
                 remaining_weight = math.log(max(math.e, columns / max(1, sparsity))) + (
@@ -159,15 +169,20 @@ def prefix_recover(
                 allocated = math.floor((oracle.budget - oracle.count) * fraction)
                 if allocated < 1:
                     raise BudgetExceeded("No remaining stage budget")
+            validation_factor = settings.get("validation_factor", 0.25)
+            validation_min = settings.get("validation_min", 8)
+            if len(levels) == 1:
+                validation_factor = settings.get(
+                    "full_stage_validation_factor", validation_factor
+                )
+                validation_min = settings.get(
+                    "full_stage_validation_min", validation_min
+                )
             validation_count = (
-                math.ceil(settings.get("validation_factor", 0.25) * sparsity)
-                if validated
-                else 0
+                math.ceil(validation_factor * sparsity) if validated else 0
             )
             validation_count = (
-                max(1, settings.get("validation_min", 8), validation_count)
-                if validated
-                else 0
+                max(1, validation_min, validation_count) if validated else 0
             )
             if allocated is not None:
                 if validated and allocated < 2:
@@ -229,7 +244,7 @@ def prefix_recover(
                     fitting_rows, current_prefixes, old_length, extension
                 )
                 response = fitting_values / math.sqrt(len(fitting_rows))
-                values, report = solve(
+                values, report = local_solver(
                     operator,
                     response,
                     settings,
@@ -380,8 +395,11 @@ def prefix_recover(
     decoding_started = time.perf_counter()
     values = np.asarray(stages[-1]["values"])
     selected = top_indices(values, sparsity)
-    unmixed = (bits(retained[selected], internal) @ inverse.T) % 2
-    syndromes = integers(unmixed)
+    if identity_mix:
+        syndromes = retained[selected]
+    else:
+        unmixed = (bits(retained[selected], internal) @ inverse.T) % 2
+        syndromes = integers(unmixed)
     frequencies, amplitudes, invalid = [], [], 0
     for frequency, value in zip(syndromes, values[selected]):
         try:

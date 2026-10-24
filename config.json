@@ -143,7 +143,7 @@
     },
     "graphs": {
       "seed": 20261023,
-      "split": "paper-evaluation-v1",
+      "split": "paper-confirmation-v2",
       "trials": 20,
       "defaults": {
         "max_iterations": 6000,
@@ -163,16 +163,18 @@
           "configuration": "published"
         },
         "prefix_bch": {
+          "threshold": 0.1,
           "solver": "bp",
           "initial_factor": 1.5,
           "initial_offset": 0,
           "extension_factor": 0.75,
           "sample_factor": 1.5,
           "validated": true,
-          "validation_factor": 0.25,
-          "validation_min": 8,
+          "validation_factor": 0.125,
+          "validation_min": 4,
           "attempts": 2,
-          "sampling": "distinct"
+          "sampling": "distinct",
+          "local_solver": "certified"
         },
         "cs": {
           "solver": "bp",
@@ -390,7 +392,7 @@
     },
     "scaling": {
       "seed": 20261030,
-      "split": "paper-evaluation-v1",
+      "split": "paper-confirmation-v2",
       "trials": 5,
       "defaults": {
         "max_iterations": 6000,
@@ -406,31 +408,38 @@
           "projection": "exact-degree-gram"
         },
         "prefix": {
+          "threshold": 0.1,
           "solver": "bp",
           "initial_factor": 2.0,
-          "initial_offset": 8,
-          "extension_factor": 0.5,
-          "sample_factor": 2.4,
+          "initial_offset": 6,
+          "extension_factor": 1.5,
+          "sample_factor": 1.9,
           "validated": true,
-          "validation_factor": 0,
-          "validation_min": 0,
-          "attempts": 1,
+          "validation_factor": 0.25,
+          "validation_min": 4,
+          "attempts": 2,
           "sampling": "distinct",
           "reuse_samples": true,
-          "threshold": 0.1,
-          "tolerance": 1e-06
+          "local_solver": "certified",
+          "full_stage_identity": true,
+          "full_stage_sample_factor": 2.3,
+          "full_stage_validation_factor": 0.0,
+          "full_stage_validation_min": 1
         },
         "prefix_bch": {
+          "threshold": 0.1,
           "solver": "bp",
           "initial_factor": 2.0,
           "initial_offset": 1,
           "extension_factor": 1.0,
-          "sample_factor": 2.4,
+          "sample_factor": 1.5,
           "validated": true,
-          "validation_factor": 0.25,
-          "validation_min": 8,
+          "validation_factor": 0.125,
+          "validation_min": 4,
           "attempts": 2,
-          "sampling": "distinct"
+          "sampling": "distinct",
+          "local_solver": "certified",
+          "full_stage_identity": true
         }
       },
       "experiments": [
@@ -443,7 +452,29 @@
           "grid": {
             "dimension": [
               12,
-              14,
+              14
+            ],
+            "sparsity": [
+              4,
+              8,
+              16,
+              32
+            ]
+          },
+          "method_settings": {
+            "prefix": {
+              "initial_offset": 10
+            }
+          }
+        },
+        {
+          "kind": "scaling",
+          "methods": [
+            "cs",
+            "prefix"
+          ],
+          "grid": {
+            "dimension": [
               16,
               18,
               20

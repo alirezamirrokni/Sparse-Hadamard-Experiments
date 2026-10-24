@@ -3,7 +3,7 @@ import time
 from functools import lru_cache
 
 import numpy as np
-from scipy.optimize import LinearConstraint, minimize
+from numba import njit
 
 from src.algebra import bits, degree_dictionary, top_indices
 from src.operators import CosetOperator, DegreeOperator
@@ -44,8 +44,35 @@ def dictionary(dimension, degree, graph, max_columns):
     return tuple(degree_dictionary(dimension, degree, max_columns))
 
 
-class CertificateTimeout(RuntimeError):
-    pass
+@njit(cache=True)
+def project_certificate(certificate, columns, projected, sweeps, tolerance):
+    candidate = certificate.copy()
+    positive = np.zeros(len(columns))
+    negative = np.zeros(len(columns))
+    squared = np.sum(projected * projected, axis=1)
+    for iteration in range(sweeps):
+        for j in range(len(columns)):
+            if squared[j] <= 1e-20:
+                continue
+            price = np.dot(columns[j], candidate)
+            value = max(0.0, positive[j] + (price - 1.0) / squared[j])
+            candidate -= (value - positive[j]) * projected[j]
+            positive[j] = value
+            price = np.dot(columns[j], candidate)
+            value = max(0.0, negative[j] + (-price - 1.0) / squared[j])
+            candidate += (value - negative[j]) * projected[j]
+            negative[j] = value
+        maximum = 0.0
+        for j in range(len(columns)):
+            maximum = max(maximum, abs(np.dot(columns[j], candidate)))
+        if maximum <= 1.0 + tolerance:
+            break
+    return candidate
+
+
+@lru_cache(maxsize=1)
+def warmup():
+    project_certificate(np.zeros(2), np.eye(2), np.eye(2), 1, 1e-10)
 
 
 def certified_support_solve(operator, response, sparsity, settings):
@@ -82,7 +109,6 @@ def certified_support_solve(operator, response, sparsity, settings):
     matrix = operator.columns(support)
     signs = np.sign(values)
     certificate = np.linalg.lstsq(matrix.T, signs, rcond=1e-12)[0]
-    equalities = LinearConstraint(matrix.T, signs, signs)
     constraints = set()
     for step in range(settings.get("certificate_rounds", 10)):
         prices = operator.rmatvec(certificate)
@@ -122,31 +148,50 @@ def certified_support_solve(operator, response, sparsity, settings):
         constraints.difference_update(support.tolist())
         if not constraints or len(constraints) > 4 * operator.shape[0]:
             return None
-        columns = operator.columns(np.asarray(sorted(constraints), dtype=int)).T
-
-        def objective_function(vector):
-            return 0.5 * float(vector @ vector)
-
-        def check_deadline(vector):
-            if time.monotonic() >= deadline:
-                raise CertificateTimeout
-
+        columns = operator.columns(np.asarray(sorted(constraints), dtype=int))
         try:
-            result = minimize(
-                objective_function,
-                certificate,
-                jac=lambda vector: vector,
-                method="SLSQP",
-                constraints=[equalities, LinearConstraint(columns, -1, 1)],
-                callback=check_deadline,
-                options={"maxiter": 50, "ftol": 1e-10},
-            )
-        except CertificateTimeout:
+            coefficients = np.linalg.solve(matrix.T @ matrix, matrix.T @ columns)
+        except np.linalg.LinAlgError:
             return None
-        if not result.success:
-            return None
-        certificate = result.x
+        projected = columns - matrix @ coefficients
+        certificate = project_certificate(
+            certificate,
+            np.ascontiguousarray(columns.T),
+            np.ascontiguousarray(projected.T),
+            1000,
+            target * 0.1,
+        )
+
     return None
+
+
+def local_solve(operator, response, settings, store=None, key=None, sparsity=None):
+    if operator.shape[1] <= min(operator.shape[0], 256):
+        matrix = operator.columns(np.arange(operator.shape[1]))
+        values, _, rank, _ = np.linalg.lstsq(matrix, response, rcond=1e-12)
+        residual = float(np.linalg.norm(matrix @ values - response))
+        if rank == operator.shape[1] and residual <= 1e-9 * max(
+            1.0, np.linalg.norm(response)
+        ):
+            return values, {
+                "solver": "bp",
+                "backend": "unique-feasible-linear-system",
+                "converged": True,
+                "iterations": 1,
+                "feasibility": residual,
+                "resumed_seconds": 0.0,
+            }
+    if hasattr(operator, "prefix_bits") and (
+        operator.prefix_bits > 0 or operator.shape[1] <= 64 * sparsity
+    ):
+        return solve(operator, response, settings, store, key, sparsity)
+    certified = certified_support_solve(operator, response, sparsity, settings)
+    if certified is None:
+        values, report = solve(operator, response, settings, store, key, sparsity)
+        report["certificate_fallback"] = True
+    else:
+        values, report = certified
+    return values, report
 
 
 def recover(

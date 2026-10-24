@@ -224,7 +224,7 @@ def settings(state, method, factor=None):
         max_local_columns=policy["max_local_columns"],
         solver_seconds=policy["time_limit_seconds"],
     )
-    if method == "cs":
+    if method == "cs" or method.startswith("prefix"):
         result.update(
             {
                 name: policy[name]
@@ -235,6 +235,7 @@ def settings(state, method, factor=None):
                 ]
             }
         )
+    if method == "cs":
         result["threshold"] = state.get(
             "cs_threshold", state["bundle"]["paper"]["cs_thresholds"][0]
         )
@@ -406,7 +407,17 @@ def calibrate(state):
 def evaluation_jobs(state, factor):
     for job in legacy_jobs(state["config"]):
         method = job["method"]
-        job["settings"] = settings(state, method, factor)
+        inherited = job["settings"]
+        baseline = {
+            **state["config"].get("defaults", {}),
+            **state["config"]["methods"][method],
+        }
+        overrides = {
+            name: value
+            for name, value in inherited.items()
+            if name not in baseline or value != baseline[name]
+        }
+        job["settings"] = {**settings(state, method, factor), **overrides}
         job["role"] = "evaluation"
         if method in {"swht", "stobbe"}:
             published = original.published_setting(job["spec"], method)
@@ -423,28 +434,6 @@ def save_state(state, stage, **extra):
             indent=2,
         ),
     )
-
-
-def wait_for_phase(state):
-    path = state["output"] / "refinement" / "phase" / "state.json"
-    last = 0
-    while path.exists() and not json.loads(path.read_text()).get("promoted"):
-        result = subprocess.run(
-            ["tmux", "display-message", "-p", "-t", "sht-refinement:0", "#{pane_dead}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0 or result.stdout.strip() == "1":
-            raise RuntimeError(
-                "The phase refinement stopped before completion; check its log before timing paper runs"
-            )
-        if time.monotonic() - last >= 60:
-            logger.info(
-                "Waiting for existing phase refinement before final timing measurements"
-            )
-            last = time.monotonic()
-        time.sleep(10)
 
 
 def run(args, suite):
@@ -500,10 +489,6 @@ def run(args, suite):
             state["workspace"] / "published-configurations.json",
             json.dumps(rows, indent=2),
         )
-        save_state(
-            state, "waiting for phase", expected_trials=len(all_jobs), cs_factor=factor
-        )
-        wait_for_phase(state)
         save_state(state, "evaluating", expected_trials=len(all_jobs), cs_factor=factor)
         database = state["workspace"] / "cache.sqlite"
         if database.exists():

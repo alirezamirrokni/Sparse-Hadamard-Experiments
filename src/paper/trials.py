@@ -85,6 +85,7 @@ def timeout_handler(signum, frame):
 
 def evaluate(job, database, implementation, max_seconds):
     warmup()
+    cs.warmup()
     store = TimedStore(database)
     key = digest({"job": job, "implementation": implementation})
     existing = store.get(key)
@@ -159,6 +160,9 @@ def evaluate(job, database, implementation, max_seconds):
                     key,
                     seed + 1709,
                     degree=degree if "bch" in method else None,
+                    local_solver=cs.local_solve
+                    if settings.get("local_solver") == "certified"
+                    else None,
                 )
             elif method == "cs":
                 rows = cs.sample_count(spec, sparsity, settings["sample_factor"])

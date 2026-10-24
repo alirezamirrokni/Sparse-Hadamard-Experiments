@@ -11,3 +11,6 @@ data/
 .DS_Store
 
 .paper-venv/
+
+*.toml
+EXPERIMENTAL_DETAILS.md
