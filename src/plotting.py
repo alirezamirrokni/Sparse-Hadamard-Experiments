@@ -418,16 +418,8 @@ def plot_phase_comparisons(results, config, directory):
                     xlabel=r"Query fraction $Q/N$" if row_index else "",
                 )
                 if column == 0:
-                    axis.set_ylabel(r"Sparsity fraction $k/Q$", labelpad=45)
-                    axis.annotate(
-                        LABELS[method],
-                        xy=(0, 0.5),
-                        xycoords="axes fraction",
-                        xytext=(-42, 0),
-                        textcoords="offset points",
-                        rotation=90,
-                        va="center",
-                        ha="center",
+                    axis.set_ylabel(
+                        rf"Sparsity fraction $k/Q$   {LABELS[method]}", labelpad=12
                     )
                 axis.set_xticks([0.01, 0.04, 0.08] if sparse else [0.2, 0.5, 0.8])
                 axis.set_yticks([0.05, 0.1, 0.15] if sparse else [0.2, 0.5, 0.8])
