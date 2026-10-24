@@ -4,12 +4,13 @@ import json
 import math
 import os
 import textwrap
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +26,8 @@ from matplotlib.ticker import (
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import norm
 
-from .storage import Store, atomic_text, canonical
+from .config import CONFIG
+from .storage import Store, atomic_text, canonical, digest
 
 
 def save_figure(figure, directory, name):
@@ -158,6 +160,8 @@ def write_csv(path, rows):
 
 
 COMPARISON_METHODS = ("cs", "prefix_bch", "stobbe", "swht")
+
+
 COMPARISON_PALETTE = {
     "cs": "#596574",
     "prefix": "#2563A6",
@@ -166,12 +170,15 @@ COMPARISON_PALETTE = {
     "stobbe": "#1B9E77",
     "swht": "#D98324",
 }
+
+
 COLORS = {
     **COMPARISON_PALETTE,
     "random": "#777777",
     "gp_ei": "#9467bd",
     "harmonica": "#e69f00",
 }
+
 
 LABELS = {
     "cs": "CS",
@@ -184,6 +191,8 @@ LABELS = {
     "gp_ei": "GP-EI",
     "harmonica": "Harmonica",
 }
+
+
 ASSESSED = {
     "ok",
     "validation_failed",
@@ -192,6 +201,8 @@ ASSESSED = {
     "InfeasibleSystem",
     "BudgetExceeded",
 }
+
+
 STYLES = ["-", "--", ":", "-."]
 
 
@@ -441,29 +452,6 @@ def plot_phase_comparisons(results, config, directory):
         save_figure(figure, directory, filename)
 
 
-def graph_operating_points(summaries):
-    groups = defaultdict(list)
-    for row in summaries:
-        if (
-            row.get("success_rate") is not None
-            and row["success_rate"] >= 0.9
-            and "algorithm_seconds_median" in row
-        ):
-            groups[
-                (
-                    row["kind"],
-                    row["snapshot"],
-                    row["dimension"],
-                    row["edges"],
-                    row["method"],
-                )
-            ].append(row)
-    return [
-        min(rows, key=lambda row: row["algorithm_seconds_median"])
-        for rows in groups.values()
-    ]
-
-
 def comparison_style():
     return plt.rc_context(
         {
@@ -507,82 +495,6 @@ def comparison_legend(
     save_figure(figure, directory, name)
 
 
-def plot_graph_comparison(results, summaries, directory):
-    selected = graph_operating_points(summaries)
-    panels = [
-        ("graph_edges", "edges", "algorithm_seconds_median", "Edges", "Runtime (s)"),
-        ("graph_edges", "edges", "queries_median", "Edges", "Oracle queries"),
-        (
-            "graph_vertices",
-            "dimension",
-            "algorithm_seconds_median",
-            "Vertices",
-            "Runtime (s)",
-        ),
-        ("graph_vertices", "dimension", "queries_median", "Vertices", "Oracle queries"),
-    ]
-    with comparison_style():
-        figure, axes = plt.subplots(1, 4, figsize=(18, 4.8))
-        for axis, (kind, xkey, metric, xlabel, ylabel) in zip(axes, panels):
-            for method in COMPARISON_METHODS:
-                groups = defaultdict(list)
-                for row in selected:
-                    if (
-                        row["kind"] == kind
-                        and row["method"] == method
-                        and metric in row
-                    ):
-                        groups[row[xkey]].append(row[metric])
-                if groups:
-                    xs = sorted(groups)
-                    axis.plot(
-                        xs,
-                        [np.median(groups[x]) for x in xs],
-                        "-o",
-                        ms=5,
-                        color=COLORS[method],
-                    )
-            axis.set(xlabel=xlabel, ylabel=ylabel, yscale="log")
-            axis.xaxis.set_major_locator(MaxNLocator(nbins=4))
-            axis.yaxis.set_minor_formatter(NullFormatter())
-        headings = []
-        for first, last, kind, key, label in [
-            (0, 1, "graph_edges", "dimension", "Vertices"),
-            (2, 3, "graph_vertices", "edges", "Edges"),
-        ]:
-            values = sorted({row[key] for row in summaries if row["kind"] == kind})
-            if values:
-                text = label + " = " + ", ".join(f"{int(value):,}" for value in values)
-                headings.append((first, last, text))
-        comparison_legend(figure, axes, directory, "graphs", headings=headings)
-        figure, axis = plt.subplots(figsize=(8, 4.2))
-        kinds = ["graph_edges", "graph_vertices"]
-        for index, method in enumerate(COMPARISON_METHODS):
-            values = []
-            for kind in kinds:
-                rows = [
-                    r
-                    for r in results
-                    if r["job"]["method"] == method
-                    and r["job"]["spec"]["kind"] == kind
-                    and r["status"] in ASSESSED
-                ]
-                values.append(np.mean([r["success"] for r in rows]) if rows else np.nan)
-            axis.barh(
-                np.arange(2) + (index - 1.5) * 0.19,
-                values,
-                height=0.18,
-                color=COLORS[method],
-            )
-        axis.set(
-            yticks=np.arange(2),
-            yticklabels=["Edges", "Vertices"],
-            xlim=(0, 1),
-            xlabel="Exact recovery fraction",
-        )
-        comparison_legend(figure, [axis], directory, "graph_recovery")
-
-
 def matched_successes(results):
     groups = defaultdict(dict)
     for row in results:
@@ -599,95 +511,6 @@ def matched_successes(results):
         ):
             selected.extend([pair["cs"], pair[other]])
     return selected
-
-
-def plot_scaling_comparison(results, directory):
-    paired = matched_successes(results)
-    sparsities = sorted({row["job"]["spec"]["sparsity"] for row in results})
-    styles = dict(zip(sparsities, STYLES))
-    sparsity_handles = [
-        Line2D(
-            [0],
-            [0],
-            color="#596574",
-            lw=2.4,
-            linestyle=styles[sparsity],
-            label=rf"$k = {sparsity}$",
-        )
-        for sparsity in sparsities
-    ]
-    panels = [
-        (None, "Jointly successful instances", r"$N = 2^n$", "prefix"),
-        (2, "Degree 2", "Boolean variables", "prefix_bch"),
-        (3, "Degree 3", "Boolean variables", "prefix_bch"),
-    ]
-    with comparison_style():
-        for metric, ylabel, name in [
-            ("algorithm_seconds", "Runtime (s)", "scaling_runtime"),
-            ("queries", "Oracle queries", "scaling_queries"),
-        ]:
-            figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
-            for axis, (degree, title, xlabel, spht) in zip(axes, panels):
-                for method in ["cs", spht]:
-                    for sparsity in sparsities:
-                        rows = [
-                            row
-                            for row in paired
-                            if row["job"]["method"] == method
-                            and row["job"]["spec"].get("degree") == degree
-                            and row["job"]["spec"]["sparsity"] == sparsity
-                        ]
-                        curve(
-                            axis,
-                            rows,
-                            lambda spec, degree=degree: (
-                                2 ** spec["dimension"]
-                                if degree is None
-                                else spec["dimension"]
-                            ),
-                            metric,
-                            method,
-                            style=styles[sparsity],
-                        )
-                axis.set(
-                    xlabel=xlabel,
-                    ylabel=ylabel,
-                    title=title,
-                    xscale="log",
-                    yscale="log",
-                )
-                if axis.lines and axis.get_xlim()[1] / axis.get_xlim()[0] < 10:
-                    xs = sorted(
-                        {float(x) for line in axis.lines for x in line.get_xdata()}
-                    )
-                    ticks = xs if len(xs) <= 3 else [xs[0], xs[len(xs) // 2], xs[-1]]
-                    axis.set_xticks(ticks)
-                    axis.xaxis.set_major_formatter(ScalarFormatter())
-                if axis.lines and axis.get_ylim()[1] / axis.get_ylim()[0] < 100:
-                    axis.yaxis.set_major_locator(
-                        LogLocator(base=10, subs=(1, 2, 5), numticks=7)
-                    )
-                    axis.yaxis.set_major_formatter(ScalarFormatter())
-                axis.xaxis.set_minor_formatter(NullFormatter())
-                axis.yaxis.set_minor_formatter(NullFormatter())
-                if not axis.lines:
-                    axis.text(
-                        0.5,
-                        0.5,
-                        "Awaiting jointly successful trials",
-                        transform=axis.transAxes,
-                        ha="center",
-                        va="center",
-                        color="#777777",
-                    )
-            comparison_legend(
-                figure,
-                axes,
-                directory,
-                name,
-                methods=("cs", "prefix"),
-                extra_handles=sparsity_handles,
-            )
 
 
 def plot_robust_comparison(results, directory):
@@ -915,41 +738,341 @@ def plot_hpo_comparison(results, directory):
     )
 
 
-def render(output, suite, config, implementation=None):
-    output = Path(output)
-    database = output / suite / "cache.sqlite"
-    if not database.exists():
+def csv_file(path, rows):
+    if not rows:
         return
-    store = Store(database)
-    results = []
-    for key, value in store.iter_records("result"):
-        if implementation is not None and value.get("implementation") != implementation:
-            continue
-        results.append(
-            {
-                name: content
-                for name, content in value.items()
-                if name
-                not in {
-                    "stages",
-                    "frequencies",
-                    "values",
-                    "query_history",
-                    "best_point",
-                }
-            }
-        )
-    store.close()
-    summaries = aggregate(results)
-    write_csv(output / suite / "summary.csv", summaries)
-    status = {
-        status: sum(r["status"] == status for r in results)
-        for status in sorted({r["status"] for r in results})
-    }
-    atomic_text(
-        output / suite / "status.json",
-        json.dumps({"completed_trials": len(results), "statuses": status}, indent=2),
+    stream = io.StringIO()
+    writer = csv.DictWriter(
+        stream, fieldnames=sorted(set().union(*(row.keys() for row in rows)))
     )
+    writer.writeheader()
+    writer.writerows(rows)
+    atomic_text(path, stream.getvalue())
+
+
+def interval(rows, metric, draws, seed, stratify=False):
+    values = [row[metric] for row in rows if metric in row and np.isfinite(row[metric])]
+    if not values:
+        return None
+    center = float(np.median(values))
+    if len(values) < 2:
+        return center, None, None
+    rng = np.random.default_rng(seed)
+    groups = defaultdict(list)
+    for row in rows:
+        value = row.get(metric)
+        if value is not None and np.isfinite(value):
+            groups[row["job"]["spec"].get("snapshot", 0) if stratify else 0].append(
+                value
+            )
+    samples = []
+    for group in groups.values():
+        group = np.asarray(group, float)
+        samples.append(group[rng.integers(0, len(group), (draws, len(group)))])
+    medians = np.median(np.concatenate(samples, axis=1), axis=1)
+    low, high = np.quantile(medians, [0.025, 0.975])
+    return center, float(low), float(high)
+
+
+def error_curve(axis, points, metric, method, draws, seed, style="-", stratify=False):
+    xs = sorted(points)
+    centers = []
+    lower = []
+    upper = []
+    valid = []
+    for x in xs:
+        estimate = interval(
+            points[x],
+            metric,
+            draws,
+            int(digest([seed, method, metric, x])[:8], 16),
+            stratify,
+        )
+        if estimate is None:
+            continue
+        center, low, high = estimate
+        valid.append(x)
+        centers.append(center)
+        lower.append(max(0.0, center - low) if low is not None else np.nan)
+        upper.append(max(0.0, high - center) if high is not None else np.nan)
+    if valid:
+        axis.errorbar(
+            valid,
+            centers,
+            yerr=np.asarray([lower, upper]),
+            fmt=style + "o",
+            color=COLORS[method],
+            lw=2.2,
+            ms=5,
+            capsize=3,
+            elinewidth=1.2,
+            capthick=1.2,
+        )
+
+
+def format_axes(axes):
+    for axis in np.asarray(axes).ravel():
+        axis.yaxis.set_minor_formatter(NullFormatter())
+        if axis.get_yscale() == "log" and axis.get_ylim()[1] / axis.get_ylim()[0] < 100:
+            axis.yaxis.set_major_locator(
+                LogLocator(base=10, subs=(1, 2, 5), numticks=7)
+            )
+            axis.yaxis.set_major_formatter(ScalarFormatter())
+        if (
+            axis.get_xscale() == "log"
+            and axis.lines
+            and axis.get_xlim()[1] / axis.get_xlim()[0] < 10
+        ):
+            xs = sorted({float(x) for line in axis.lines for x in line.get_xdata()})
+            axis.set_xticks(xs if len(xs) <= 3 else [xs[0], xs[len(xs) // 2], xs[-1]])
+            axis.xaxis.set_major_formatter(ScalarFormatter())
+        axis.xaxis.set_minor_formatter(NullFormatter())
+
+
+def graph_plots(rows, directory, policy):
+    methods = ("cs", "stobbe", "swht", "prefix_bch")
+    panels = [
+        ("graph_edges", "edges", "algorithm_seconds", "Edges", "CPU runtime (s)"),
+        ("graph_edges", "edges", "queries", "Edges", "Unique queries"),
+        (
+            "graph_vertices",
+            "dimension",
+            "algorithm_seconds",
+            "Vertices",
+            "CPU runtime (s)",
+        ),
+        ("graph_vertices", "dimension", "queries", "Vertices", "Unique queries"),
+    ]
+    with comparison_style():
+        figure, axes = plt.subplots(1, 4, figsize=(18, 4.8))
+        for axis, (kind, xkey, metric, xlabel, ylabel) in zip(axes, panels):
+            for method in methods:
+                points = defaultdict(list)
+                for row in rows:
+                    if (
+                        row["job"]["method"] == method
+                        and row["job"]["spec"]["kind"] == kind
+                        and row["status"] != "resource_limit"
+                    ):
+                        points[row["job"]["spec"][xkey]].append(row)
+                error_curve(
+                    axis,
+                    points,
+                    metric,
+                    method,
+                    policy["bootstrap_draws"],
+                    policy["seed"],
+                    stratify=True,
+                )
+            axis.set(xlabel=xlabel, ylabel=ylabel, yscale="log")
+            if not axis.lines:
+                axis.text(
+                    0.5,
+                    0.5,
+                    "Pending measurements",
+                    transform=axis.transAxes,
+                    ha="center",
+                    va="center",
+                    fontsize=11,
+                )
+        format_axes(axes)
+        comparison_legend(
+            figure,
+            axes,
+            directory,
+            "graphs",
+            headings=[(0, 1, "Vertices = 100"), (2, 3, "Edges = 50")],
+        )
+        figure, axis = plt.subplots(figsize=(8, 4.2))
+        blocks = defaultdict(dict)
+        for row in rows:
+            spec = row["job"]["spec"]
+            if spec["kind"] == "graph_vertices" and spec["dimension"] > 210:
+                continue
+            key = digest([spec, row["job"]["trial"], row["job"]["seed"]])
+            blocks[key][row["job"]["method"]] = row
+        common = [
+            row
+            for group in blocks.values()
+            if all(method in group for method in methods)
+            for row in group.values()
+        ]
+        for index, method in enumerate(methods):
+            centers = []
+            lower = []
+            upper = []
+            for kind in ["graph_edges", "graph_vertices"]:
+                selected = [
+                    r
+                    for r in common
+                    if r["job"]["method"] == method and r["job"]["spec"]["kind"] == kind
+                ]
+                n = len(selected)
+                successes = sum(bool(r["success"]) for r in selected)
+                center = successes / n if n else np.nan
+                low, high = wilson(successes, n)
+                centers.append(center)
+                lower.append(max(0.0, center - low) if low is not None else np.nan)
+                upper.append(max(0.0, high - center) if high is not None else np.nan)
+            axis.barh(
+                np.arange(2) + (index - 1.5) * 0.19,
+                centers,
+                height=0.18,
+                color=COLORS[method],
+                xerr=np.asarray([lower, upper]),
+                error_kw={"capsize": 3, "elinewidth": 1.2, "ecolor": "#333333"},
+            )
+        for position, kind in enumerate(["graph_edges", "graph_vertices"]):
+            if not any(row["job"]["spec"]["kind"] == kind for row in common):
+                axis.text(
+                    0.5,
+                    position,
+                    "Pending measurements",
+                    ha="center",
+                    va="center",
+                    fontsize=11,
+                )
+        axis.set(
+            yticks=np.arange(2),
+            yticklabels=["Edges", r"Vertices ($n\leq210$)"],
+            xlim=(0, 1),
+            xlabel="Exact recovery on shared graph configurations",
+        )
+        comparison_legend(figure, [axis], directory, "graph_recovery")
+
+
+def scaling_plots(rows, directory, policy):
+    paired = matched_successes(rows)
+    sparsities = sorted({row["job"]["spec"]["sparsity"] for row in rows})
+    styles = dict(zip(sparsities, STYLES))
+    from matplotlib.lines import Line2D
+
+    handles = [
+        Line2D(
+            [0], [0], color="#596574", lw=2.2, linestyle=styles[k], label=rf"$k = {k}$"
+        )
+        for k in sparsities
+    ]
+    with comparison_style():
+        for metric, ylabel, name in [
+            ("algorithm_seconds", "CPU runtime (s)", "scaling_runtime"),
+            ("queries", "Unique queries", "scaling_queries"),
+        ]:
+            figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+            for axis, degree, title in zip(
+                axes,
+                [None, 2, 3],
+                ["Jointly successful instances", "Degree 2", "Degree 3"],
+            ):
+                for method in ["cs", "prefix" if degree is None else "prefix_bch"]:
+                    for sparsity in sparsities:
+                        points = defaultdict(list)
+                        for row in paired:
+                            spec = row["job"]["spec"]
+                            if (
+                                row["job"]["method"] == method
+                                and spec.get("degree") == degree
+                                and spec["sparsity"] == sparsity
+                            ):
+                                points[
+                                    2 ** spec["dimension"]
+                                    if degree is None
+                                    else spec["dimension"]
+                                ].append(row)
+                        error_curve(
+                            axis,
+                            points,
+                            metric,
+                            method,
+                            policy["bootstrap_draws"],
+                            policy["seed"],
+                            styles[sparsity],
+                        )
+                axis.set(
+                    xlabel=r"$N = 2^n$" if degree is None else "Boolean variables",
+                    ylabel=ylabel,
+                    title=title,
+                    xscale="log",
+                    yscale="log",
+                )
+                if not axis.lines:
+                    axis.text(
+                        0.5,
+                        0.5,
+                        "No jointly successful trials yet",
+                        transform=axis.transAxes,
+                        ha="center",
+                        va="center",
+                        fontsize=11,
+                    )
+            format_axes(axes)
+            comparison_legend(
+                figure,
+                axes,
+                directory,
+                name,
+                methods=("cs", "prefix"),
+                extra_handles=handles,
+            )
+
+
+def paired_effects(rows, policy):
+    blocks = defaultdict(dict)
+    for row in rows:
+        job = row["job"]
+        blocks[digest([job["spec"], job["seed"], job["trial"]])][job["method"]] = row
+    groups = defaultdict(list)
+    for block in blocks.values():
+        spht = block.get("prefix_bch", block.get("prefix"))
+        cs = block.get("cs")
+        if cs is not None and spht is not None and cs["success"] and spht["success"]:
+            groups[digest(cs["job"]["spec"])].append((cs, spht))
+    output = []
+    for key, pairs in groups.items():
+        item = {**pairs[0][0]["job"]["spec"], "jointly_successful_pairs": len(pairs)}
+        rng = np.random.default_rng(
+            int(digest([policy["seed"], "paired-effects", key])[:8], 16)
+        )
+        indices = (
+            rng.integers(0, len(pairs), (policy["bootstrap_draws"], len(pairs)))
+            if len(pairs) > 1
+            else None
+        )
+        for name, ratios in [
+            (
+                "cpu_speedup_cs_over_spht",
+                [a["algorithm_seconds"] / b["algorithm_seconds"] for a, b in pairs],
+            ),
+            (
+                "query_ratio_spht_over_cs",
+                [b["queries"] / a["queries"] for a, b in pairs],
+            ),
+        ]:
+            logs = np.log(np.asarray(ratios))
+            item[name] = float(np.exp(np.mean(logs)))
+            if indices is not None:
+                low, high = np.quantile(
+                    np.exp(np.mean(logs[indices], axis=1)), [0.025, 0.975]
+                )
+                item[name + "_low"] = float(low)
+                item[name + "_high"] = float(high)
+        output.append(item)
+    return output
+
+
+def render(output, suite, config, implementation=None):
+    directory = Path(output) / suite
+    store = Store(directory / "cache.sqlite")
+    metadata = store.get("__run__") or {}
+    if not metadata.get("complete"):
+        store.close()
+        return
+    rows = [
+        row
+        for _, row in store.iter_records("result")
+        if implementation is None or row.get("implementation") == implementation
+    ]
+    store.close()
     plt.rcParams.update(
         {
             "font.family": "serif",
@@ -959,7 +1082,6 @@ def render(output, suite, config, implementation=None):
             "xtick.labelsize": 12,
             "ytick.labelsize": 12,
             "legend.fontsize": 12,
-            "lines.linewidth": 2.4,
             "mathtext.fontset": "cm",
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
@@ -967,17 +1089,48 @@ def render(output, suite, config, implementation=None):
             "axes.spines.right": False,
         }
     )
-    figures = output / "figures"
-    if suite == "phase":
-        plot_phase_comparisons(results, config, figures)
-    elif suite == "graphs":
-        write_csv(
-            output / suite / "operating_points.csv", graph_operating_points(summaries)
-        )
-        plot_graph_comparison(results, summaries, figures)
+    figures = Path(output) / "figures"
+    if suite == "graphs":
+        graph_plots(rows, figures, CONFIG["evaluation"])
     elif suite == "scaling":
-        plot_scaling_comparison(results, figures)
+        scaling_plots(rows, figures, CONFIG["evaluation"])
+    elif suite == "phase":
+        plot_phase_comparisons(rows, config, figures)
     elif suite == "robust":
-        plot_robust_comparison(results, figures)
-    elif suite == "hpo":
-        plot_hpo_comparison(results, figures)
+        plot_robust_comparison(rows, figures)
+    else:
+        plot_hpo_comparison(rows, figures)
+    write_csv(directory / "summary.csv", aggregate(rows))
+    if suite in {"graphs", "scaling"}:
+        csv_file(
+            directory / "paired-comparisons.csv",
+            paired_effects(rows, CONFIG["evaluation"]),
+        )
+        coverage = []
+        groups = defaultdict(list)
+        for row in rows:
+            groups[canonical([row["job"]["spec"], row["job"]["method"]])].append(row)
+        paired = matched_successes(rows)
+        pair_counts = Counter(canonical(row["job"]["spec"]) for row in paired)
+        for values in groups.values():
+            spec = values[0]["job"]["spec"]
+            total = len(values)
+            successes = sum(bool(row["success"]) for row in values)
+            low, high = wilson(successes, total)
+            coverage.append(
+                {
+                    **spec,
+                    "method": values[0]["job"]["method"],
+                    "completed": total,
+                    "successes": successes,
+                    "recovery": successes / total,
+                    "recovery_low": low,
+                    "recovery_high": high,
+                    "jointly_successful_pairs": pair_counts[canonical(spec)] // 2,
+                    "timeouts": sum(row["status"] == "timeout" for row in values),
+                    "resource_limits": sum(
+                        row["status"] == "resource_limit" for row in values
+                    ),
+                }
+            )
+        csv_file(directory / "coverage.csv", coverage)

@@ -10,7 +10,7 @@ data/
 *.sqlite*
 .DS_Store
 
-.paper-venv/
+.venv-bench/
 
 *.toml
 EXPERIMENTAL_DETAILS.md

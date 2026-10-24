@@ -2,7 +2,6 @@ import contextlib
 import hashlib
 import importlib
 import io
-import json
 import os
 import pickle
 import subprocess
@@ -14,8 +13,10 @@ from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = Path(__file__).with_name("original_manifest.json")
+from .sources import SOURCES
+
+ROOT = Path(__file__).resolve().parents[1]
+
 DIRECTORY = ROOT / "data" / "originals"
 
 
@@ -28,18 +29,14 @@ def verify(path, expected):
 
 
 def prepare():
-    manifest = json.loads(MANIFEST.read_text())
+    manifest = SOURCES
 
     def fetch(item):
         path = DIRECTORY / item["path"]
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-            existing = ROOT / "data" / "upstream" / item["path"]
-            if existing.exists():
-                data = verify(existing, item["git_blob"])
-            else:
-                url = f"https://raw.githubusercontent.com/{manifest['repository']}/{manifest['revision']}/{item['path']}"
-                data = urllib.request.urlopen(url, timeout=120).read()
+            url = f"https://raw.githubusercontent.com/{manifest['repository']}/{manifest['revision']}/{item['path']}"
+            data = urllib.request.urlopen(url, timeout=120).read()
             temporary = path.with_suffix(path.suffix + ".download")
             temporary.write_bytes(data)
             verify(temporary, item["git_blob"])
@@ -172,7 +169,7 @@ def published_setting(spec, method):
     axis = "Edge" if spec["kind"] == "graph_edges" else "Vertex"
     key = spec["edges"] if axis == "Edge" else spec["dimension"]
     filename = f"code/experimentResults/{label}{axis}FileSec{spec['snapshot']}.pkl"
-    manifest = json.loads(MANIFEST.read_text())
+    manifest = SOURCES
     entry = next(item for item in manifest["files"] if item["path"] == filename)
     payload = verify(DIRECTORY / filename, entry["git_blob"])
     table = DataOnlyUnpickler(io.BytesIO(payload)).load()
@@ -203,3 +200,8 @@ def published_setting(spec, method):
         if method == "swht"
         else "first reported C at recovery >= 0.9",
     }
+
+
+def read_source(directory, name):
+    entry = next(item for item in SOURCES["files"] if item["path"] == name)
+    return verify(Path(directory) / name, entry["git_blob"]).decode()

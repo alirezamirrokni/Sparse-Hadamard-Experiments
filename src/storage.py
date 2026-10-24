@@ -1,14 +1,10 @@
 import hashlib
 import io
 import json
-import logging
 import os
-import platform
 import sqlite3
-import subprocess
 import time
 import zlib
-from importlib.metadata import distributions
 from pathlib import Path
 
 import numpy as np
@@ -34,12 +30,12 @@ def digest(value):
 
 
 def source_digest():
+    root = Path(__file__).parent
     value = hashlib.sha256()
-    files = list(Path(__file__).parent.glob("*.py")) + list(
-        Path(__file__).parent.glob("upstream_manifest.json")
-    )
-    for file in sorted(files):
-        value.update(file.name.encode())
+    for file in sorted(root.rglob("*.py")):
+        if file.name in {"config.py", "plotting.py", "runner.py"}:
+            continue
+        value.update(str(file.relative_to(root)).encode())
         value.update(file.read_bytes())
     return value.hexdigest()
 
@@ -224,37 +220,3 @@ class Oracle:
         self.requests = state["requests"]
         self.evaluation_seconds = state["evaluation_seconds"]
         self.history = state["history"]
-
-
-def provenance(config):
-    try:
-        revision = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True
-        ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        revision = None
-    return {
-        "config": config,
-        "source_sha256": source_digest(),
-        "git_revision": revision,
-        "python": platform.python_version(),
-        "platform": platform.platform(),
-        "processor": platform.processor(),
-        "packages": {d.metadata["Name"]: d.version for d in distributions()},
-        "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-
-
-def configure_logging(directory):
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(directory / "progress.log"),
-        ],
-        force=True,
-    )
-    logging.getLogger("fontTools").setLevel(logging.WARNING)

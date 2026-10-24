@@ -3,37 +3,18 @@ import math
 import numpy as np
 from sklearn.linear_model import Lasso
 
-from .algebra import bits, top_indices
-from .operators import CosetOperator, DegreeOperator, materialize
-from .recovery import sparse_result
-from .solvers import debias, solve
+from .. import originals
+from ..algebra import bits, top_indices
+from ..metrics import sparse_result
+from ..operators import CosetOperator, materialize
+from ..solvers import debias
 
 
-def graph_cs_recover(oracle, dimension, sparsity, rows, settings, store, key, seed):
-    rng = np.random.default_rng(seed)
-    points = rng.integers(0, 2, (rows, dimension), dtype=np.uint8)
-    dictionary = [()] + [
-        (a, b) for a in range(dimension) for b in range(a + 1, dimension)
-    ]
-    operator = DegreeOperator(
-        points,
-        dictionary,
-        max_cache_bytes=settings.get("max_dense_bytes", 536870912) // 2,
-    )
-    response = oracle(points) / np.sqrt(rows)
-    values, report = solve(
-        operator, response, settings, store, key + "/solver", sparsity
-    )
-    values = debias(operator, response, values, sparsity)
-    selected = top_indices(values, sparsity)
-    selected = selected[np.abs(values[selected]) > 1e-8]
-    return sparse_result(
-        [dictionary[j] for j in selected],
-        values[selected],
-        status="ok",
-        solver_report=report,
-        rounds=1,
-        resumed_compute_seconds=report.get("resumed_seconds", 0.0),
+def recover_graph(oracle, dimension, edges, settings):
+    return (
+        originals.load()
+        .stobbe(dimension, edges, settings["C"])
+        .run(oracle, settings["lambda"])
     )
 
 

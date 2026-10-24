@@ -142,12 +142,6 @@ class BCHMap:
                             value >> bit
                         ) & 1
 
-        self.quadratic_roots = None
-        if not self.identity and self.degree == 2:
-            self.quadratic_roots = [-1] * (self.field.order + 1)
-            for value in range(self.field.order + 1):
-                self.quadratic_roots[self.field.mul(value, value) ^ value] = value
-
     def encode(self, locations):
         if self.identity:
             return sum(1 << j for j in locations)
@@ -163,24 +157,6 @@ class BCHMap:
         syndrome = int(syndrome)
         if self.identity:
             result = tuple(j for j in range(self.dimension) if (syndrome >> j) & 1)
-        elif self.degree == 2:
-            mask = (1 << self.field_bits) - 1
-            first = syndrome & mask
-            third = (syndrome >> self.field_bits) & mask
-            square = self.field.mul(first, first)
-            cube = self.field.mul(square, first)
-            if first == 0:
-                result = ()
-            elif third == cube:
-                result = (first - 1,)
-            else:
-                product = self.field.div(third ^ cube, first)
-                root = self.quadratic_roots[self.field.div(product, square)]
-                if root < 0:
-                    raise ValueError("Quadratic syndrome has no field roots")
-                left = self.field.mul(first, root)
-                right = left ^ first
-                result = tuple(sorted((left - 1, right - 1)))
         else:
             powers = [0] * (2 * self.degree + 1)
             for j in range(1, len(powers)):

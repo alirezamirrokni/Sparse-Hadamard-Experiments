@@ -4,16 +4,16 @@ import math
 import time
 
 import numpy as np
-from sklearn.linear_model import Lasso
 
 from .algebra import warmup
-from .baselines import graph_cs_recover, stobbe_robust_recover
 from .hpo import run_hpo
-from .operators import DegreeOperator, materialize
-from .recovery import coefficient_error, global_recover, prefix_recover, sparse_result
-from .signals import graph_signal, random_signal, tail_bound
+from .methods.cs import global_recover
+from .methods.spht import prefix_recover
+from .methods.stobbe import stobbe_robust_recover
+from .methods.swht import swht_recover
+from .metrics import coefficient_error
+from .signals import random_signal, tail_bound
 from .storage import BudgetExceeded, Oracle, Store, digest
-from .upstream import graph_edges, swht_recover
 
 
 def expand_grid(grid):
@@ -176,39 +176,6 @@ def jobs(config):
             raise ValueError(f"Unknown experiment kind {kind}")
 
 
-def stobbe_recover(oracle, dimension, edges, settings, store, key, seed):
-    rng = np.random.default_rng(seed)
-    rows = max(1, int(settings.get("C", 2.5) * math.ceil(edges * math.log2(dimension))))
-    points = rng.integers(0, 2, (rows, dimension), dtype=np.uint8)
-    observed = oracle(points)
-    dictionary = [()] + [
-        (a, b) for a in range(dimension) for b in range(a + 1, dimension)
-    ]
-    operator = DegreeOperator(points, dictionary, max_cache_bytes=0)
-    matrix = materialize(
-        operator, settings.get("max_dense_bytes", 268_435_456)
-    ) * np.sqrt(rows)
-    penalty = settings.get("lambda", 1.0)
-    estimator = Lasso(
-        alpha=penalty / rows,
-        fit_intercept=False,
-        max_iter=settings.get("max_iterations", 10000),
-        tol=settings.get("tolerance", 1e-8),
-        selection="cyclic",
-    )
-    estimator.fit(matrix, observed)
-    selected = [j for j in range(1, len(dictionary)) if abs(estimator.coef_[j]) > 1e-4]
-    frequencies = [()] + [dictionary[j] for j in selected]
-    return sparse_result(
-        frequencies,
-        [len(selected) / 2] + [-0.5] * len(selected),
-        status="ok",
-        rounds=1,
-        implementation="equivalent degree-two L1 objective, modern coordinate descent",
-        dual_gap=float(estimator.dual_gap_),
-    )
-
-
 def execute(job, database, upstream_directory, implementation):
     warmup()
     store = Store(database)
@@ -228,20 +195,7 @@ def execute(job, database, upstream_directory, implementation):
         if spec["kind"] == "hpo":
             result = run_hpo(spec, method, settings, store, key, seed, implementation)
         else:
-            if spec["kind"].startswith("graph"):
-                edges = graph_edges(
-                    upstream_directory,
-                    spec["dimension"],
-                    spec["edges"],
-                    spec["snapshot"],
-                )
-                signal = graph_signal(spec["dimension"], edges)
-                dimension, sparsity, degree = spec["dimension"], len(edges) + 1, 2
-                budget = None
-                rows = math.ceil(
-                    settings.get("sample_factor", 2.4) * sparsity * math.log2(dimension)
-                )
-            elif spec["kind"] == "phase":
+            if spec["kind"] == "phase":
                 dimension = spec["size"]
                 budget = max(1, round(spec["delta"] * (1 << dimension)))
                 sparsity = max(1, min(budget, round(spec["rho"] * budget)))
@@ -295,7 +249,7 @@ def execute(job, database, upstream_directory, implementation):
                 result = swht_recover(
                     oracle,
                     dimension,
-                    sparsity - 1 if spec["kind"].startswith("graph") else sparsity,
+                    sparsity,
                     settings,
                     upstream_directory,
                     seed,
@@ -303,14 +257,6 @@ def execute(job, database, upstream_directory, implementation):
             elif method == "stobbe" and spec["kind"] == "robust":
                 result = stobbe_robust_recover(
                     oracle, dimension, sparsity, rows, settings, seed + 1709
-                )
-            elif method == "stobbe":
-                result = stobbe_recover(
-                    oracle, dimension, sparsity - 1, settings, store, key, seed
-                )
-            elif method == "cs" and spec["kind"].startswith("graph"):
-                result = graph_cs_recover(
-                    oracle, dimension, sparsity, rows, settings, store, key, seed + 1709
                 )
             else:
                 result = global_recover(
@@ -341,15 +287,6 @@ def execute(job, database, upstream_directory, implementation):
                 N=1 << dimension,
                 degree=degree,
             )
-            if spec["kind"].startswith("graph"):
-                estimated = {tuple(f) for f in result["frequencies"] if len(f) == 2}
-                difference = len(set(edges) ^ estimated)
-                result.update(
-                    edge_error=difference / max(1, len(edges)),
-                    edge_difference=difference,
-                    edges=len(edges),
-                    success=difference == 0 and result["status"] == "ok",
-                )
             if spec["kind"] == "robust":
                 bound = tail_bound(signal, sparsity)
                 norm = np.linalg.norm(signal.values)

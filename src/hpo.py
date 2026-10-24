@@ -3,19 +3,19 @@ import time
 import warnings
 
 import numpy as np
+from scipy.stats import norm
 from sklearn.datasets import load_digits
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import Matern
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern
-from scipy.stats import norm
 
 from .algebra import bits, degree_dictionary, top_indices, tuple_characters
-from .recovery import prefix_recover
+from .methods.spht import prefix_recover
 from .operators import DegreeOperator
 from .signals import random_signal
 from .solvers import solve

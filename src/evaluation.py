@@ -7,13 +7,15 @@ import traceback
 import numpy as np
 
 from src.algebra import warmup
-from src.bch import bch_map
-from src.recovery import coefficient_error, prefix_recover
+from src.methods.bch import bch_map
+from src.methods.spht import prefix_recover
+from src.metrics import coefficient_error
 from src.signals import graph_signal, random_signal
 from src.solvers import InfeasibleSystem
 from src.storage import BudgetExceeded, Oracle, Store, digest
 
-from . import cs, original
+from . import originals as original
+from .methods import cs, stobbe, swht
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +87,8 @@ def timeout_handler(signum, frame):
 
 def evaluate(job, database, implementation, max_seconds):
     warmup()
-    cs.warmup()
+    if job["method"] == "cs":
+        cs.prepare()
     store = TimedStore(database)
     key = digest({"job": job, "implementation": implementation})
     existing = store.get(key)
@@ -104,6 +107,7 @@ def evaluate(job, database, implementation, max_seconds):
     is_graph = spec["kind"].startswith("graph")
     if is_graph:
         modules = original.load()
+    if is_graph:
         graph = original.graph(spec)
         truth = graph_signal(dimension, sorted(graph.graph)).truth()
         function = CutFunction(graph)
@@ -137,18 +141,9 @@ def evaluate(job, database, implementation, max_seconds):
     result = {}
     try:
         if method == "swht":
-            algorithm = modules.swht(
-                dimension,
-                sparsity - 1,
-                settings["C"],
-                settings["ratio"],
-                settings["coordinate_bins"],
-                settings["detection_iterations"],
-            )
-            recovered = algorithm.run(oracle)
+            recovered = swht.recover_graph(oracle, dimension, sparsity - 1, settings)
         elif method == "stobbe":
-            algorithm = modules.stobbe(dimension, sparsity - 1, settings["C"])
-            recovered = algorithm.run(oracle, settings["lambda"])
+            recovered = stobbe.recover_graph(oracle, dimension, sparsity - 1, settings)
         else:
             if method.startswith("prefix"):
                 numerical = prefix_recover(
@@ -160,12 +155,10 @@ def evaluate(job, database, implementation, max_seconds):
                     key,
                     seed + 1709,
                     degree=degree if "bch" in method else None,
-                    local_solver=cs.local_solve
-                    if settings.get("local_solver") == "certified"
-                    else None,
                 )
             elif method == "cs":
-                rows = cs.sample_count(spec, sparsity, settings["sample_factor"])
+                factor = settings["sample_factor"]
+                rows = cs.sample_count(spec, sparsity, factor)
                 numerical = cs.recover(
                     oracle,
                     dimension,
