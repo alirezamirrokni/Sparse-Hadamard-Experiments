@@ -175,9 +175,9 @@ COLORS = {
 
 LABELS = {
     "cs": "CS",
-    "prefix": "SPHT",
-    "prefix_bch": "SPHT",
-    "prefix_robust": "SPHT",
+    "prefix": "SPHT (Ours)",
+    "prefix_bch": "SPHT (Ours)",
+    "prefix_robust": "SPHT (Ours)",
     "swht": "SWHT",
     "stobbe": "Stobbe",
     "random": "Random",
@@ -201,8 +201,16 @@ def finish(figure, axes, title, directory, name):
         if axis.lines or axis.collections or axis.patches:
             handles, labels = axis.get_legend_handles_labels()
             if handles:
+                handles, labels = zip(
+                    *sorted(
+                        zip(handles, labels),
+                        key=lambda entry: entry[1].startswith("SPHT (Ours)"),
+                    )
+                )
                 if len(handles) > 4:
                     axis.legend(
+                        handles,
+                        labels,
                         loc="upper center",
                         bbox_to_anchor=(0.5, -0.34),
                         ncol=2,
@@ -214,7 +222,12 @@ def finish(figure, axes, title, directory, name):
                     )
                 else:
                     axis.legend(
-                        loc="best", fontsize=11, frameon=False, handlelength=1.5
+                        handles,
+                        labels,
+                        loc="best",
+                        fontsize=11,
+                        frameon=False,
+                        handlelength=1.5,
                     )
         else:
             axis.text(
@@ -467,6 +480,9 @@ def comparison_style():
 
 
 def comparison_legend(figure, axes, directory, name, methods=COMPARISON_METHODS):
+    methods = sorted(
+        methods, key=lambda method: LABELS[method].startswith("SPHT (Ours)")
+    )
     handles = [
         Line2D([0], [0], color=COLORS[method], lw=2.4, marker="o", label=LABELS[method])
         for method in methods
