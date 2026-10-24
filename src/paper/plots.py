@@ -168,6 +168,16 @@ def graph_plots(rows, directory, policy):
                     stratify=True,
                 )
             axis.set(xlabel=xlabel, ylabel=ylabel, yscale="log")
+            if not axis.lines:
+                axis.text(
+                    0.5,
+                    0.5,
+                    "Pending measurements",
+                    transform=axis.transAxes,
+                    ha="center",
+                    va="center",
+                    fontsize=11,
+                )
         format_axes(axes)
         comparison_legend(
             figure,
@@ -215,6 +225,16 @@ def graph_plots(rows, directory, policy):
                 xerr=np.asarray([lower, upper]),
                 error_kw={"capsize": 3, "elinewidth": 1.2, "ecolor": "#333333"},
             )
+        for position, kind in enumerate(["graph_edges", "graph_vertices"]):
+            if not any(row["job"]["spec"]["kind"] == kind for row in common):
+                axis.text(
+                    0.5,
+                    position,
+                    "Pending measurements",
+                    ha="center",
+                    va="center",
+                    fontsize=11,
+                )
         axis.set(
             yticks=np.arange(2),
             yticklabels=["Edges", r"Vertices ($n\leq210$)"],
@@ -447,12 +467,17 @@ def _render(directory, suite, bundle, implementation):
         ),
     )
 
-    state_path = directory.parent / "paper" / f"{suite}-state.json"
+    output = (
+        directory.parent.parent
+        if directory.parent.name == "paper"
+        else directory.parent
+    )
+    state_path = output / "paper" / f"{suite}-state.json"
     if (
         state_path.exists()
         and json.loads(state_path.read_text()).get("implementation") == implementation
     ):
-        destination = directory.parent / "figures"
+        destination = output / "figures"
         destination.mkdir(exist_ok=True)
         for path in (directory / "figures").glob("*"):
             if path.suffix in {".png", ".pdf"}:

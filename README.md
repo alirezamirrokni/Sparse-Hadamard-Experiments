@@ -51,6 +51,6 @@ Graph and scaling cost plots show medians with 95% bootstrap intervals. Graph re
 
 ## Results
 
-Every figure is saved as PNG and PDF under `results/figures/`. Pending paper evaluations and logs live under `results/paper/`; complete replacements are published to `results/graphs/` and `results/scaling/` only after the repetition and implementation audits pass. Existing figures remain preliminary until then.
+Every figure is saved as PNG and PDF under `results/figures/`. These files show the latest rendered results, including partial previews while runs are active. Pending evaluations and logs live under `results/paper/`; complete datasets are published to `results/graphs/` and `results/scaling/` only after the repetition and implementation audits pass. Check the suite status and audit before treating a figure as final. Empty panels in partial graph previews are marked as pending.
 
 Each completed suite includes its raw SQLite cache, configuration and source identity, summary tables, and audit. Scaling also records coverage, and paired comparisons include confidence intervals for CPU speedup and query ratios. Preserve manifests when moving results. Local environments, downloaded data, results, TOML files, and the local `EXPERIMENTAL_DETAILS.md` are ignored by Git.
