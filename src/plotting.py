@@ -3,6 +3,7 @@ import io
 import json
 import math
 import os
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 
@@ -12,6 +13,8 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+from matplotlib.ticker import LogLocator, MaxNLocator, NullFormatter, ScalarFormatter
 from scipy.interpolate import RegularGridInterpolator
 from scipy.stats import norm
 
@@ -160,9 +163,9 @@ COLORS = {
 }
 LABELS = {
     "cs": "CS",
-    "prefix": "Proposed prefix",
-    "prefix_bch": "Proposed (BCH)",
-    "prefix_robust": "Proposed robust",
+    "prefix": "SPHT",
+    "prefix_bch": "SPHT",
+    "prefix_robust": "SPHT",
     "swht": "SWHT",
     "stobbe": "Stobbe",
     "random": "Random",
@@ -186,23 +189,67 @@ def finish(figure, axes, title, directory, name):
         if axis.lines or axis.collections or axis.patches:
             handles, labels = axis.get_legend_handles_labels()
             if handles:
-                axis.legend(fontsize=7, frameon=False)
+                if len(handles) > 4:
+                    axis.legend(
+                        loc="upper center",
+                        bbox_to_anchor=(0.5, -0.34),
+                        ncol=2,
+                        fontsize=10.5,
+                        frameon=False,
+                        handlelength=1.5,
+                        handletextpad=0.4,
+                        labelspacing=0.2,
+                    )
+                else:
+                    axis.legend(
+                        loc="best", fontsize=11, frameon=False, handlelength=1.5
+                    )
         else:
             axis.text(
                 0.5,
                 0.5,
-                "Awaiting completed trials",
+                "Awaiting trials",
                 ha="center",
                 va="center",
                 transform=axis.transAxes,
                 color="#777777",
             )
-    figure.suptitle(title, fontsize=14)
-    figure.tight_layout(rect=(0, 0, 1, 0.97))
+    for axis in np.asarray(axes).ravel():
+        axis.set_title(textwrap.fill(axis.get_title(), 38))
+        if "$" not in axis.get_ylabel():
+            axis.set_ylabel(textwrap.fill(axis.get_ylabel(), 36))
+        if "$" not in axis.get_xlabel():
+            axis.set_xlabel(textwrap.fill(axis.get_xlabel(), 38))
+        if axis.get_xscale() == "linear":
+            axis.xaxis.set_major_locator(MaxNLocator(nbins=4))
+        elif axis.get_xlim()[1] / axis.get_xlim()[0] < 10:
+            xs = sorted(
+                {float(x) for line in axis.lines for x in line.get_xdata() if x > 0}
+            )
+            if xs:
+                ticks = xs if len(xs) <= 3 else [xs[0], xs[len(xs) // 2], xs[-1]]
+                axis.set_xticks(ticks)
+                axis.xaxis.set_major_formatter(ScalarFormatter())
+                axis.xaxis.set_minor_formatter(NullFormatter())
+        if axis.get_yscale() == "log":
+            axis.yaxis.set_minor_formatter(NullFormatter())
+    figure.subplots_adjust(
+        left=0.07, right=0.98, bottom=0.15, top=0.95, hspace=0.85, wspace=0.45
+    )
     save_figure(figure, directory, name)
 
 
-def curve(axis, rows, xvalue, metric, method, label=None, style="-", probability=False):
+def curve(
+    axis,
+    rows,
+    xvalue,
+    metric,
+    method,
+    label=None,
+    style="-",
+    probability=False,
+    color=None,
+):
     groups = defaultdict(list)
     for row in rows:
         if row["status"] not in ASSESSED:
@@ -224,14 +271,14 @@ def curve(axis, rows, xvalue, metric, method, label=None, style="-", probability
             lo, hi = np.quantile(values, [0.25, 0.75])
         lower.append(lo)
         upper.append(hi)
-    color = COLORS[method]
+    color = color or COLORS[method]
     axis.plot(
         xs,
         centers,
         style,
         marker="o",
-        ms=3,
-        lw=1.4,
+        ms=6,
+        lw=2.4,
         color=color,
         label=label or LABELS[method],
     )
@@ -271,7 +318,7 @@ def plot_phase_comparisons(results, config, directory):
         figure, axes = plt.subplots(
             2,
             len(columns),
-            figsize=(4.2 * len(columns), 7.1),
+            figsize=(16, 7.4),
             squeeze=False,
             layout="constrained",
         )
@@ -335,39 +382,31 @@ def plot_phase_comparisons(results, config, directory):
                         surface,
                         levels=[0.5],
                         colors="white",
-                        linewidths=1.1,
+                        linewidths=2.4,
                     )
                 if not sparse:
                     delta_curve, rho_curve = dt_curve()
-                    axis.plot(delta_curve, rho_curve, color="black", lw=1)
+                    axis.plot(delta_curve, rho_curve, color="black", lw=2.2)
                 axis.set(
                     xlim=(min(deltas), max(deltas)),
                     ylim=(min(rhos), max(rhos)),
-                    xlabel=r"Query fraction $Q/N$",
+                    xlabel=r"Query fraction $Q/N$" if row_index else "",
                 )
                 if column == 0:
-                    axis.set_ylabel(LABELS[method] + "\n" + r"Sparsity fraction $k/Q$")
+                    axis.set_ylabel(LABELS[method])
+                axis.set_xticks([0.01, 0.04, 0.08] if sparse else [0.2, 0.5, 0.8])
+                axis.set_yticks([0.05, 0.1, 0.15] if sparse else [0.2, 0.5, 0.8])
+                if column > 0:
+                    axis.tick_params(labelleft=False)
                 if row_index == 0:
-                    axis.set_title(
-                        f"N = {2**size:,}\n{distribution.title()}", fontsize=11
-                    )
+                    axis.set_title(f"N = {2**size:,}\n{distribution.title()}")
+        figure.supylabel(r"Sparsity fraction $k/Q$")
         figure.colorbar(
             mesh,
             ax=axes.ravel().tolist(),
-            label="Recovery probability (interpolated)",
+            label="Recovery probability",
             shrink=0.9,
             pad=0.02,
-        )
-        figure.suptitle(
-            "CS and prefix recovery: "
-            + ("sparse measurement regime" if sparse else "phase diagrams"),
-            fontsize=14,
-        )
-        figure.supxlabel(
-            "Bilinear interpolation of observed recovery fractions; no model fit. "
-            "White: 50% contour. Gray: insufficient coverage."
-            + ("" if sparse else " Black: Gaussian asymptotic reference."),
-            fontsize=8,
         )
         save_figure(figure, directory, filename)
 
@@ -396,7 +435,7 @@ def graph_operating_points(summaries):
 
 
 def plot_graph_comparison(results, summaries, directory):
-    figure, axes = plt.subplots(2, 4, figsize=(19, 8.5))
+    figure, axes = plt.subplots(2, 4, figsize=(19, 9.5))
     selected = graph_operating_points(summaries)
     methods = ["swht", "stobbe", "prefix_bch"]
     settings = [
@@ -562,7 +601,7 @@ def matched_successes(results):
 
 
 def plot_scaling_comparison(results, directory):
-    figure, axes = plt.subplots(2, 3, figsize=(17, 9))
+    figure, axes = plt.subplots(2, 3, figsize=(17, 10))
     paired = matched_successes(results)
     global_rows = [r for r in results if r["job"]["spec"].get("degree") is None]
     for method in ["cs", "prefix"]:
@@ -670,10 +709,10 @@ def plot_scaling_comparison(results, directory):
     censored = sum(r["status"] not in ASSESSED for r in results)
     axes[1, 2].text(
         0.02,
-        0.03,
-        f"Resource/configuration-limited trials: {censored}",
+        0.86,
+        f"Resource/configuration-limited\ntrials: {censored}",
         transform=axes[1, 2].transAxes,
-        fontsize=8,
+        fontsize=11,
     )
     finish(
         figure,
@@ -684,70 +723,129 @@ def plot_scaling_comparison(results, directory):
     )
 
 
+def robust_legend(figure, axes, directory, name):
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.01),
+        ncol=len(labels),
+        frameon=False,
+    )
+    figure.tight_layout(rect=(0, 0.13, 1, 1), pad=1.0, w_pad=1.0)
+    save_figure(figure, directory, name)
+
+
 def plot_robust_comparison(results, directory):
-    figure, axes = plt.subplots(2, 3, figsize=(16, 8.5))
-    for column, sparsity in enumerate([8, 16, 32]):
+    palette = {"cs": "#333333", "prefix_robust": sns.color_palette("dark")[0]}
+    with (
+        sns.axes_style("darkgrid"),
+        plt.rc_context(
+            {
+                "axes.spines.top": False,
+                "axes.spines.right": False,
+                "font.family": "serif",
+            }
+        ),
+    ):
+        figure, axes = plt.subplots(1, 3, figsize=(15, 4.6), sharey=True)
+        groups = defaultdict(list)
+        for record in results:
+            if record.get("error_over_E", 0) > 0:
+                job = record["job"]
+                groups[
+                    (job["method"], job["spec"]["sparsity"], job["spec"]["tail_ratio"])
+                ].append(record["error_over_E"])
+        intervals = [np.quantile(values, [0.25, 0.75]) for values in groups.values()]
+        limits = (
+            (
+                min(lo for lo, hi in intervals) / 1.08,
+                max(hi for lo, hi in intervals) * 1.08,
+            )
+            if intervals
+            else (0.1, 1)
+        )
+        for column, sparsity in enumerate([8, 16, 32]):
+            axis = axes[column]
+            for method in ["cs", "prefix_robust"]:
+                rows = [
+                    r
+                    for r in results
+                    if r["job"]["method"] == method
+                    and r["job"]["spec"]["sparsity"] == sparsity
+                ]
+                curve(
+                    axis,
+                    rows,
+                    lambda spec: spec["tail_ratio"],
+                    "error_over_E",
+                    method,
+                    color=palette[method],
+                )
+            axis.set(
+                xlabel="Tail / head norm ratio",
+                ylabel="Recovery error / E" if column == 0 else "",
+                xscale="log",
+                yscale="log",
+                ylim=limits,
+                title=f"k = {sparsity}",
+            )
+            axis.yaxis.set_major_locator(LogLocator(base=10, subs=(2, 3, 4, 5, 6, 8)))
+            axis.yaxis.set_major_formatter(ScalarFormatter())
+            axis.yaxis.set_minor_formatter(NullFormatter())
+        robust_legend(figure, axes, directory, "robustness_error")
+        figure, axes = plt.subplots(1, 3, figsize=(15, 4.6))
         for method in ["cs", "prefix_robust"]:
-            rows = [
-                r
-                for r in results
-                if r["job"]["method"] == method
-                and r["job"]["spec"]["sparsity"] == sparsity
+            rows = [r for r in results if r["job"]["method"] == method]
+            assessed = [
+                {**r, "within_bound": r["error_over_E"] <= 4}
+                for r in rows
+                if "error_over_E" in r
             ]
             curve(
-                axes[0, column],
-                rows,
+                axes[0],
+                assessed,
                 lambda spec: spec["tail_ratio"],
-                "error_over_E",
+                "within_bound",
                 method,
+                probability=True,
+                color=palette[method],
             )
-        axes[0, column].axhline(4, color="#777777", ls="--", lw=1, label="4E target")
-        axes[0, column].set(
+            curve(
+                axes[1],
+                rows,
+                lambda spec: spec["sparsity"],
+                "queries",
+                method,
+                color=palette[method],
+            )
+            curve(
+                axes[2],
+                rows,
+                lambda spec: spec["sparsity"],
+                "algorithm_seconds",
+                method,
+                color=palette[method],
+            )
+        axes[0].set(
             xlabel="Tail / head norm ratio",
-            ylabel="Recovery error / E",
+            ylabel="Fraction with error ≤ 4E",
             xscale="log",
-            yscale="log",
-            title=f"k = {sparsity}",
+            ylim=(0, 1.03),
+            title="Recovery within 4E",
         )
-    for method in ["cs", "prefix_robust"]:
-        rows = [r for r in results if r["job"]["method"] == method]
-        assessed = [
-            {**r, "within_bound": r["error_over_E"] <= 4}
-            for r in rows
-            if "error_over_E" in r
-        ]
-        curve(
-            axes[1, 0],
-            assessed,
-            lambda spec: spec["tail_ratio"],
-            "within_bound",
-            method,
-            probability=True,
+        axes[1].set(
+            xlabel="k", ylabel="Oracle queries", yscale="log", title="Sampling cost"
         )
-        curve(axes[1, 1], rows, lambda spec: spec["sparsity"], "queries", method)
-        curve(
-            axes[1, 2], rows, lambda spec: spec["sparsity"], "algorithm_seconds", method
+        axes[2].set(
+            xlabel="k", ylabel="Runtime (s)", yscale="log", title="Computational cost"
         )
-    axes[1, 0].set(
-        xlabel="Tail / head norm ratio",
-        ylabel="Fraction with error ≤ 4E",
-        xscale="log",
-        ylim=(-0.03, 1.03),
-        title="All sparsities and distributions",
-    )
-    axes[1, 1].set(
-        xlabel="k", ylabel="Oracle queries", yscale="log", title="Sampling cost"
-    )
-    axes[1, 2].set(
-        xlabel="k", ylabel="Runtime (s)", yscale="log", title="Computational cost"
-    )
-    finish(
-        figure,
-        axes,
-        "Approximate recovery: quality and cost with a spectral tail",
-        directory,
-        "robustness",
-    )
+        axes[1].yaxis.set_major_locator(LogLocator(base=10, subs=(1, 3)))
+        axes[1].yaxis.set_minor_formatter(NullFormatter())
+        for axis in axes[1:]:
+            axis.set_xticks([8, 16, 32])
+        robust_legend(figure, axes, directory, "robustness_cost")
 
 
 def plot_trace(axis, rows, method, time_axis=False):
@@ -781,7 +879,7 @@ def plot_trace(axis, rows, method, time_axis=False):
 
 
 def plot_hpo_comparison(results, directory):
-    figure, axes = plt.subplots(2, 3, figsize=(18, 9))
+    figure, axes = plt.subplots(2, 3, figsize=(17, 10))
     methods = ["random", "gp_ei", "harmonica", "prefix_bch"]
     results = [r for r in results if r["status"] == "ok"]
     budgets = [
@@ -904,7 +1002,14 @@ def render(output, suite, config, implementation=None):
     plt.rcParams.update(
         {
             "font.family": "serif",
-            "font.size": 9,
+            "font.size": 14,
+            "axes.labelsize": 14,
+            "axes.titlesize": 14,
+            "xtick.labelsize": 12,
+            "ytick.labelsize": 12,
+            "legend.fontsize": 12,
+            "lines.linewidth": 2.4,
+            "mathtext.fontset": "cm",
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "axes.spines.top": False,

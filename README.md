@@ -20,20 +20,21 @@ tmux attach -t sht-phase
 
 Use `.venv/bin/python main.py` to run everything sequentially in the foreground. Individual suites are available through `--suite phase`, `graphs`, `scaling`, `robust`, or `hpo`. `main.py plan` prints the trial counts, and `main.py plot` refreshes the figures from completed results.
 
-## Six figures, saved as PNG and PDF
+## Seven figures, saved as PNG and PDF
 
-Every update overwrites the same six named figure pairs under `results/figures/`.
+Every update overwrites the same seven named figure pairs under `results/figures/`.
 
 | Figure | Panels |
 | --- | --- |
-| `phase_diagrams` | CS in the top row and proposed prefix recovery in the bottom row; columns vary domain size and coefficient distribution |
+| `phase_diagrams` | CS in the top row and SPHT in the bottom row; columns vary domain size and coefficient distribution |
 | `phase_sparse` | The same comparison at larger domains and smaller query fractions |
 | `graphs` | Principal edge/vertex sweeps, reconstruction error, and both exploratory upstream sweeps |
 | `scaling` | Runtime, query counts, and recovery quality; unrestricted and low-degree spectra |
-| `robustness` | Error divided by the mixed-norm tail budget, fraction within the 4E target, and sample/runtime costs |
+| `robustness_error` | Recovery error divided by the mixed-norm tail budget, shown on log scales |
+| `robustness_cost` | Fraction within the 4E target, query counts, and runtime |
 | `hpo` | Validation quality versus evaluations and total cost, held-out test quality, synthetic objectives, and optimizer overhead |
 
-There is no separate DCT/Fourier reproduction of the historical Figure 3, and no collection of individual panel files. Phase heatmaps use bilinear interpolation of observed recovery fractions, with the same interpolation for both methods. Black curves in the main phase comparison are Gaussian asymptotic references; white curves mark the interpolated 50% contour. Interpolation does not add trials, fit a probability model, or extrapolate beyond measured coverage. Regions lacking the neighboring observations needed for interpolation remain gray. Raw counts and probabilities remain in the SQLite cache and summary CSV.
+There is no separate DCT/Fourier reproduction of the historical Figure 3, and no collection of individual panel files. Phase heatmaps use bilinear interpolation of observed recovery fractions, with the same interpolation for both methods. Black curves in the main phase comparison are Gaussian asymptotic references; white curves mark the interpolated 50% contour. Interpolation does not add trials, fit a probability model, or extrapolate beyond measured coverage. Regions lacking the neighboring observations needed for interpolation remain gray. Raw counts and probabilities remain in the SQLite cache and summary CSV. Figures omit overall titles and use balanced serif typography: 14-point labels/titles, 12-point ticks, and compact legends at the saved figure size. Robustness figures use Seaborn dark-grid styling, a dark-blue SPHT curve, and one horizontal legend below each figure. Their error limits focus on observed values; the 4E criterion appears in the separate cost/recovery figure.
 
 ## Experiments and interpretation
 
@@ -45,7 +46,7 @@ The graph suite retains the principal runners, reconstruction experiments, and b
 
 The robust method keeps the same coarse-IHT, residual-subtraction, median-of-means, and coordinate-retention architecture. Its practical settings use sampling factor 8, retention 4k, nine median groups of 8k samples, and up to 1,000 coarse iterations. These reduced constants were selected on separate calibration seeds and passed 36/36 held-out checks, compared with 23/36 and 26/36 for the previous practical settings. This finite check does not certify the manuscript's worst-case guarantee. New production results use separate instances.
 
-HPO compares Random Search, GP expected improvement, Harmonica, and the prefix/BCH method at equal unique-evaluation budgets. Digits uses fixed validation/test splits per replicate and excludes dummy variables from objective-cache keys. It is a real classifier-training workload, not a reproduction of historical CIFAR GPU timings. Synthetic sparse and hierarchical objectives include both configured noise levels. The Harmonica baseline may cache up to 2 GiB of its dictionary to avoid repeatedly regenerating a large matrix.
+HPO compares Random Search, GP expected improvement, Harmonica, and SPHT at equal unique-evaluation budgets. Digits uses fixed validation/test splits per replicate and excludes dummy variables from objective-cache keys. It is a real classifier-training workload, not a reproduction of historical CIFAR GPU timings. Synthetic sparse and hierarchical objectives include both configured noise levels. The Harmonica baseline may cache up to 2 GiB of its dictionary to avoid repeatedly regenerating a large matrix.
 
 ## Cache, logs, and reproducibility
 

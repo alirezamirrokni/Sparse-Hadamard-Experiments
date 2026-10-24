@@ -273,7 +273,7 @@ def status(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run resumable sparse Hadamard comparisons and generate six consolidated figures."
+        description="Run resumable sparse Hadamard comparisons and generate seven consolidated figures."
     )
     parser.add_argument(
         "command",
@@ -309,7 +309,7 @@ def main():
         }
         print(
             json.dumps(
-                {"trials": counts, "total": sum(counts.values()), "maximum_figures": 6},
+                {"trials": counts, "total": sum(counts.values()), "maximum_figures": 7},
                 indent=2,
             )
         )
