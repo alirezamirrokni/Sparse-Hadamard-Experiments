@@ -39,7 +39,7 @@ CONFIG = {
         "graphs": {
             "seed": 20261023,
             "split": "reference-bp-evaluation-v1",
-            "trials": 20,
+            "trials": 10,
             "defaults": EXACT,
             "methods": {
                 "swht": {"implementation": "original", "configuration": "published"},

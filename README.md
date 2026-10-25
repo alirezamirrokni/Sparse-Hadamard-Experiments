@@ -32,7 +32,7 @@ Results go to `results/<suite>/cache.sqlite`, which holds every finished trial, 
 | Suite | Setup | Repetitions | Trials | Figures |
 | --- | --- | ---: | ---: | --- |
 | Phase | N = 2⁸, 2¹⁰ with Q/N ∈ [0.10, 0.95], k/Q ∈ [0.05, 0.95], Rademacher and Gaussian; N = 2¹², 2¹⁴, 2¹⁶ with Q/N ∈ [0.005, 0.08], k/Q ∈ [0.025, 0.30], Rademacher | 10 per cell | 33,120 | `phase_diagrams`, `phase_sparse` |
-| Graphs | Authors' snapshots 1, 3, 5, 7; 100 vertices with 20–70 edges; 50 edges with 50–800 vertices | 20 per instance | 8,240 | `graphs`, `graph_recovery` |
+| Graphs | Authors' snapshots 1, 3, 5, 7; 100 vertices with 20–70 edges; 50 edges with 50–800 vertices | 10 per instance | 4,120 | `graphs`, `graph_recovery` |
 | Scaling | Unrestricted n ∈ {12,…,20}, k ∈ {4, 8, 16, 32}; degree d ∈ {2, 3} with n ∈ {30,…,800}, k ∈ {8, 16, 32} | 5 per configuration | 560 | `scaling_runtime`, `scaling_queries` |
 
 **Phase diagrams.** Both methods get a budget of Q = δN unique queries for a k = ρQ sparse signal. Recovery succeeds when the relative coefficient error is at most 10⁻⁶. CS solves basis pursuit with the same compiled ADMM solver that SPHT uses for its local problems. Heatmaps show empirical recovery probability with bilinear display interpolation and the 50% contour; the black curve is the Donoho–Tanner Gaussian asymptote, shown for reference only.
@@ -59,6 +59,26 @@ The scaling settings were tuned on a separate seed split (`tuning-v1`, 20 repeti
 
 ## Results
 
+### Phase diagrams
+
+**N = 256 and 1,024**, with Rademacher and Gaussian coefficients. [PDF](results/figures/phase_diagrams.pdf)
+
+![Phase diagrams comparing CS and SPHT for N = 256 and 1,024](results/figures/phase_diagrams.png)
+
+**Sparse measurement regime: N = 4,096, 16,384 and 65,536.** [PDF](results/figures/phase_sparse.pdf)
+
+![Sparse-regime phase diagrams comparing CS and SPHT](results/figures/phase_sparse.png)
+
+### Scaling
+
+**Runtime.** [PDF](results/figures/scaling_runtime.pdf)
+
+![Runtime scaling of CS and SPHT on jointly successful instances](results/figures/scaling_runtime.png)
+
+**Unique queries.** [PDF](results/figures/scaling_queries.pdf)
+
+![Query scaling of CS and SPHT on jointly successful instances](results/figures/scaling_queries.png)
+
 Scaling is complete (560 trials). Exact recovery rates:
 
 | Signal class | CS | SPHT |
@@ -81,9 +101,9 @@ Geometric-mean CPU speedup of SPHT over CS on jointly successful pairs, with SPH
 | Unrestricted, k = 4 | 6.0× (0.96) | 27× (1.01) | 76× (0.94) | 620× (0.87) | 1,790× (0.91) |
 | Unrestricted, k = 32 | 0.95× (0.78) | 6.4× (0.69) | 25× (0.68) | 72× (0.68) | 104× (0.82) |
 
-SPHT uses fewer queries than CS in 47 of 50 configurations. The three exceptions (ratios 1.01–1.07) have 95% intervals that include 1, as does the one runtime ratio below 1 (k = 32, N = 2¹²: 0.44–1.63×). Per-configuration values are in `results/scaling/paired-comparisons.csv`. The untuned scaling run is kept in `results/archive/scaling-untuned.sqlite`.
+SPHT uses fewer queries than CS in 47 of 50 configurations. The three exceptions (ratios 1.01–1.07) have 95% intervals that include 1, as does the one runtime ratio below 1 (k = 32, N = 2¹²: 0.44–1.63×). Per-configuration values are in `results/scaling/paired-comparisons.csv`.
 
-The phase and graph suites are still running, and robustness and HPO are deferred.
+Phase diagrams are complete (33,120 trials). The graph suite is still running, and further robustness and HPO experiments are deferred.
 
 ## Acknowledgements
 

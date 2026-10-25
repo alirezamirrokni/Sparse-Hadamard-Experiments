@@ -249,11 +249,9 @@ def comparison_style():
     )
 
 
-def comparison_legend(figure, axes, directory, name, methods=("cs", "prefix_bch", "stobbe", "swht"), headings=(), extra_handles=()):
+def comparison_legend(figure, axes, directory, name, methods=("cs", "prefix_bch", "stobbe", "swht"), headings=()):
     methods = sorted(methods, key=lambda method: LABELS[method].startswith("SPHT (Ours)"))
     handles = [Line2D([0], [0], color=COLORS[m], lw=2.4, marker="o", label=LABELS[m]) for m in methods]
-    if extra_handles:
-        handles[-1:-1] = extra_handles
     figure.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=len(handles), frameon=False)
     figure.tight_layout(rect=(0, 0.13, 1, 0.9 if headings else 1), pad=1.0, w_pad=1.0)
     for first, last, text in headings:
@@ -334,9 +332,9 @@ def placeholder(axis, text, x=0.5, y=0.5, **options):
 def plot_graphs(rows, directory, policy):
     methods = ("cs", "stobbe", "swht", "prefix_bch")
     panels = [
-        ("graph_edges", "edges", "algorithm_seconds", "Edges", "CPU runtime (s)"),
+        ("graph_edges", "edges", "algorithm_seconds", "Edges", "Runtime (s)"),
         ("graph_edges", "edges", "queries", "Edges", "Unique queries"),
-        ("graph_vertices", "dimension", "algorithm_seconds", "Vertices", "CPU runtime (s)"),
+        ("graph_vertices", "dimension", "algorithm_seconds", "Vertices", "Runtime (s)"),
         ("graph_vertices", "dimension", "queries", "Vertices", "Unique queries"),
     ]
     with comparison_style():
@@ -387,10 +385,11 @@ def plot_scaling(rows, directory, policy):
     paired = matched_successes(rows)
     sparsities = sorted({row["job"]["spec"]["sparsity"] for row in rows})
     styles = dict(zip(sparsities, STYLES))
-    handles = [Line2D([0], [0], color="#596574", lw=2.2, linestyle=styles[k], label=rf"$k = {k}$") for k in sparsities]
+    method_handles = [Line2D([0], [0], color=COLORS[m], lw=2.4, marker="o", label=LABELS[m]) for m in ("cs", "prefix")]
+    sparsity_handles = [Line2D([0], [0], color="#596574", lw=2.2, linestyle=styles[k], label=rf"$k = {k}$") for k in sparsities]
     with comparison_style():
         for metric, ylabel, name in [
-            ("algorithm_seconds", "CPU runtime (s)", "scaling_runtime"),
+            ("algorithm_seconds", "Runtime (s)", "scaling_runtime"),
             ("queries", "Unique queries", "scaling_queries"),
         ]:
             figure, axes = plt.subplots(1, 3, figsize=(16, 4.8))
@@ -410,7 +409,16 @@ def plot_scaling(rows, directory, policy):
                 if not axis.lines:
                     placeholder(axis, "No jointly successful trials yet", transform=axis.transAxes)
             format_axes(axes)
-            comparison_legend(figure, axes, directory, name, methods=("cs", "prefix"), extra_handles=handles)
+            figure.tight_layout(rect=(0, 0.21, 1, 1), pad=1.0, w_pad=1.0)
+            figure.legend(
+                handles=method_handles, title="Method", title_fontsize=12, loc="lower center",
+                bbox_to_anchor=(0.28, 0.015), ncol=2, frameon=False, handlelength=2.8, columnspacing=1.8,
+            )
+            figure.legend(
+                handles=sparsity_handles, title="Sparsity", title_fontsize=12, loc="lower center",
+                bbox_to_anchor=(0.68, 0.015), ncol=len(sparsities), frameon=False, handlelength=2.8, columnspacing=1.8,
+            )
+            save_figure(figure, directory, name)
 
 
 def plot_robust(results, directory):
