@@ -1,3 +1,4 @@
+import copy
 import itertools
 import logging
 import math
@@ -7,279 +8,134 @@ import traceback
 
 import numpy as np
 
-from . import data as original
-from .data import (
-    BudgetExceeded,
-    Oracle,
-    Store,
-    digest,
-    graph_signal,
-    random_signal,
-    tail_bound,
-)
+from . import original_code
+from .config import CONFIG
 from .hpo import run_hpo
-from .methods import cs, stobbe, swht
-from .methods.cs import global_recover
-from .methods.spht import bch_map, prefix_recover
-from .methods.stobbe import stobbe_robust_recover
-from .methods.swht import swht_recover
+from .methods import cs, spht, stobbe, swht
 from .numerics import InfeasibleSystem, coefficient_error, warmup
+from .signals import graph_signal, random_signal, tail_bound
+from .store import BudgetExceeded, Oracle, Store, digest
+
+EVALUATED = {"graphs", "scaling"}
 
 
-def expand_grid(grid):
-    names = list(grid)
-    return [
-        dict(zip(names, values))
-        for values in itertools.product(*(grid[name] for name in names))
-    ]
+def grid(values):
+    return [dict(zip(values, cell)) for cell in itertools.product(*values.values())]
 
 
-def method_settings(config, experiment, method, parameters=None):
-    return {
-        **config.get("defaults", {}),
-        **config["methods"][method],
-        **experiment.get("method_settings", {}).get(method, {}),
-        **(parameters or {}),
-    }
+def cells(experiment):
+    kind = experiment["kind"]
+    if kind == "phase":
+        for size, delta, rho, distribution in itertools.product(
+            experiment["sizes"], experiment["deltas"], experiment["rhos"], experiment["distributions"]
+        ):
+            yield {"kind": kind, "size": size, "delta": delta, "rho": rho, "distribution": distribution}
+    elif kind.startswith("graph"):
+        for snapshot in [1, 3, 5, 7]:
+            if kind == "graph_vertices":
+                pairs = [(n, experiment["edges"]) for n in experiment["vertices"] if snapshot != 5 or n >= 70]
+            else:
+                pairs = [(experiment["vertices"], e) for e in experiment["edges"]]
+            for dimension, edges in pairs:
+                yield {"kind": kind, "snapshot": snapshot, "dimension": dimension, "edges": edges}
+    else:
+        for cell in grid(experiment["grid"]):
+            yield {"kind": kind, **experiment.get("settings", {}), **cell}
 
 
-def jobs(config):
-    methods = config["methods"]
+def jobs(suite):
+    config = copy.deepcopy(CONFIG["suites"][suite])
+    policy = CONFIG["evaluation"]
     for experiment in config["experiments"]:
-        kind = experiment["kind"]
-        repetitions = experiment.get("trials", config.get("trials", 20))
-        if kind == "phase":
-            for size, delta, rho, distribution in itertools.product(
-                experiment["sizes"],
-                experiment["deltas"],
-                experiment["rhos"],
-                experiment.get("distributions", ["rademacher"]),
-            ):
-                base = {
-                    "kind": kind,
-                    "size": size,
-                    "delta": delta,
-                    "rho": rho,
-                    "distribution": distribution,
-                }
-                for trial in range(repetitions):
-                    seed = int(
-                        digest(
-                            [
-                                config.get("seed", 20261023),
-                                config.get("split", "evaluation"),
-                                base,
-                                trial,
-                            ]
-                        )[:8],
-                        16,
-                    )
-                    for method in experiment.get("methods", methods):
-                        for parameters in expand_grid(
-                            experiment.get("parameter_grids", {}).get(method, {})
-                        ):
-                            yield {
-                                "spec": base,
-                                "trial": trial,
-                                "seed": seed,
-                                "method": method,
-                                "settings": method_settings(
-                                    config, experiment, method, parameters
-                                ),
-                            }
-        elif kind in {"graph_edges", "graph_vertices"}:
-            for snapshot in experiment.get("snapshots", [1, 3, 5, 7]):
-                if "vertices" in kind:
-                    cells = [
-                        (n, experiment.get("edges", 50))
-                        for n in experiment["vertices"]
-                        if snapshot != 5 or n >= 70
-                    ]
-                else:
-                    cells = [
-                        (experiment.get("vertices", 100), e)
-                        for e in experiment["edges"]
-                    ]
-                for dimension, edges in cells:
-                    base = {
-                        "kind": kind,
-                        "snapshot": snapshot,
-                        "dimension": dimension,
-                        "edges": edges,
+        for spec in cells(experiment):
+            for trial in range(experiment.get("trials", config["trials"])):
+                identity = spec["task"] if spec["kind"] == "hpo" else spec
+                seed = int(digest([config["seed"], config["split"], identity, trial])[:8], 16)
+                for method in experiment.get("methods", config["methods"]):
+                    if spec.get("dimension", 0) > experiment.get("method_max_dimensions", {}).get(method, math.inf):
+                        continue
+                    settings = {
+                        **config["defaults"],
+                        **config["methods"][method],
+                        **experiment.get("method_settings", {}).get(method, {}),
                     }
-                    for trial in range(repetitions):
-                        seed = int(
-                            digest(
-                                [
-                                    config.get("seed", 20261023),
-                                    config.get("split", "evaluation"),
-                                    base,
-                                    trial,
-                                ]
-                            )[:8],
-                            16,
-                        )
-                        for method in experiment.get("methods", methods):
-                            if dimension > experiment.get(
-                                "method_max_dimensions", {}
-                            ).get(method, float("inf")):
-                                continue
-                            for parameters in expand_grid(
-                                experiment.get("parameter_grids", {}).get(method, {})
-                            ):
-                                yield {
-                                    "spec": base,
-                                    "trial": trial,
-                                    "seed": seed,
-                                    "method": method,
-                                    "settings": method_settings(
-                                        config, experiment, method, parameters
-                                    ),
-                                }
-        elif kind in {"scaling", "robust"}:
-            for cell in expand_grid(experiment["grid"]):
-                base = {"kind": kind, **cell}
-                for trial in range(repetitions):
-                    seed = int(
-                        digest(
-                            [
-                                config.get("seed", 20261023),
-                                config.get("split", "evaluation"),
-                                base,
-                                trial,
-                            ]
-                        )[:8],
-                        16,
-                    )
-                    for method in experiment.get("methods", methods):
-                        yield {
-                            "spec": base,
-                            "trial": trial,
-                            "seed": seed,
-                            "method": method,
-                            "settings": method_settings(config, experiment, method),
-                        }
-        elif kind == "hpo":
-            for cell in expand_grid(experiment["grid"]):
-                base = {"kind": kind, **experiment.get("settings", {}), **cell}
-                for trial in range(repetitions):
-                    seed = int(
-                        digest(
-                            [
-                                config.get("seed", 20261023),
-                                config.get("split", "evaluation"),
-                                base["task"],
-                                trial,
-                            ]
-                        )[:8],
-                        16,
-                    )
-                    for method in experiment.get("methods", methods):
-                        yield {
-                            "spec": base,
-                            "trial": trial,
-                            "seed": seed,
-                            "method": method,
-                            "settings": method_settings(config, experiment, method),
-                        }
-        else:
-            raise ValueError(f"Unknown experiment kind {kind}")
+                    job = {"spec": spec, "trial": trial, "seed": seed, "method": method, "settings": settings}
+                    if suite in EVALUATED:
+                        evaluation_settings(job, policy)
+                    yield job
 
 
-def execute(job, database, upstream_directory, implementation):
+def evaluation_settings(job, policy):
+    settings = job["settings"]
+    settings.update(
+        max_dense_bytes=policy["max_dense_bytes"],
+        max_global_columns=policy["max_global_columns"],
+        max_local_columns=policy["max_local_columns"],
+        solver_seconds=policy["time_limit_seconds"],
+    )
+    if job["method"] == "cs":
+        settings.pop("max_iterations", None)
+        settings.pop("threshold", None)
+    else:
+        settings.update(max_iterations=policy["max_iterations"], tolerance=policy["tolerance"])
+    if job["method"] in {"stobbe", "swht"}:
+        published = original_code.published_setting(job["spec"], job["method"])
+        settings.update(published["settings"])
+        job["published_configuration"] = published
+    job["role"] = "evaluation"
+
+
+def key(job, implementation):
+    return digest({"job": job, "implementation": implementation})
+
+
+def problem(spec, settings, seed):
+    if spec["kind"] == "phase":
+        dimension = spec["size"]
+        budget = max(1, round(spec["delta"] * (1 << dimension)))
+        sparsity = max(1, min(budget, round(spec["rho"] * budget)))
+        return random_signal(dimension, sparsity, seed, spec["distribution"]), dimension, sparsity, None, budget, budget
+    dimension, sparsity, degree = spec["dimension"], spec["sparsity"], spec.get("degree")
+    signal = random_signal(
+        dimension, sparsity, seed, spec.get("distribution", "gaussian"), degree,
+        spec.get("tail_ratio", 0), spec.get("tail_size", 0),
+    )
+    columns = 1 << dimension if degree is None else sum(math.comb(dimension, d) for d in range(degree + 1))
+    rows = math.ceil(settings.get("sample_factor", 2.4) * sparsity * math.log(max(math.e, columns / sparsity)))
+    return signal, dimension, sparsity, degree, None, rows
+
+
+def execute(job, database, implementation):
     warmup()
     store = Store(database)
-    key = digest({"job": job, "implementation": implementation})
-    if store.get(key) is not None:
+    trial_key = key(job, implementation)
+    if store.get(trial_key) is not None:
         store.close()
-        return "cached"
-    spec, method, settings, seed = (
-        job["spec"],
-        job["method"],
-        job["settings"],
-        job["seed"],
-    )
+        return
+    spec, method, settings, seed = job["spec"], job["method"], job["settings"], job["seed"]
     started = time.perf_counter()
     oracle = None
     try:
         if spec["kind"] == "hpo":
-            result = run_hpo(spec, method, settings, store, key, seed, implementation)
+            result = run_hpo(spec, method, settings, store, trial_key, seed, implementation)
         else:
-            if spec["kind"] == "phase":
-                dimension = spec["size"]
-                budget = max(1, round(spec["delta"] * (1 << dimension)))
-                sparsity = max(1, min(budget, round(spec["rho"] * budget)))
-                degree = None
-                signal = random_signal(dimension, sparsity, seed, spec["distribution"])
-                rows = budget
-            else:
-                dimension, sparsity = spec["dimension"], spec["sparsity"]
-                degree = spec.get("degree")
-                signal = random_signal(
-                    dimension,
-                    sparsity,
-                    seed,
-                    spec.get("distribution", "gaussian"),
-                    degree,
-                    spec.get("tail_ratio", 0),
-                    spec.get("tail_size", 0),
-                )
-                budget = None
-                dictionary_size = (
-                    1 << dimension
-                    if degree is None
-                    else sum(math.comb(dimension, d) for d in range(degree + 1))
-                )
-                rows = math.ceil(
-                    settings.get("sample_factor", 2.4)
-                    * sparsity
-                    * math.log(max(math.e, dictionary_size / sparsity))
-                )
-            namespace = digest(
-                {"spec": spec, "seed": seed, "implementation": implementation}
-            )
+            signal, dimension, sparsity, degree, budget, rows = problem(spec, settings, seed)
+            namespace = digest({"spec": spec, "seed": seed, "implementation": implementation})
             oracle = Oracle(signal, dimension, store, namespace, budget)
             algorithm_started = time.perf_counter()
             if method.startswith("prefix"):
-                robust = "robust" in method
                 error_budget = tail_bound(signal, sparsity)
-                result = prefix_recover(
-                    oracle,
-                    dimension,
-                    sparsity,
-                    settings,
-                    store,
-                    key,
-                    seed + 1709,
+                result = spht.prefix_recover(
+                    oracle, dimension, sparsity, settings, store, trial_key, seed + 1709,
                     degree=degree if "bch" in method else None,
-                    robust=robust and error_budget > 0,
-                    tail_budget=error_budget,
+                    robust="robust" in method and error_budget > 0, tail_budget=error_budget,
                 )
             elif method == "swht":
-                result = swht_recover(
-                    oracle,
-                    dimension,
-                    sparsity,
-                    settings,
-                    upstream_directory,
-                    seed,
-                )
+                result = swht.recover(oracle, dimension, sparsity, settings, seed)
             elif method == "stobbe" and spec["kind"] == "robust":
-                result = stobbe_robust_recover(
-                    oracle, dimension, sparsity, rows, settings, seed + 1709
-                )
+                result = stobbe.recover(oracle, dimension, sparsity, rows, settings, seed + 1709)
             else:
-                result = global_recover(
-                    oracle,
-                    dimension,
-                    sparsity,
-                    rows,
-                    settings,
-                    store,
-                    key,
-                    seed + 1709,
-                    degree=degree,
-                )
+                result = cs.recover(oracle, dimension, sparsity, rows, settings, store, trial_key, seed + 1709, degree=degree)
             duration = time.perf_counter() - algorithm_started
             error = coefficient_error(signal.truth(), result)
             result.update(
@@ -288,10 +144,7 @@ def execute(job, database, upstream_directory, implementation):
                 queries=oracle.count,
                 sampled_rows=oracle.requests,
                 oracle_seconds=oracle.evaluation_seconds,
-                algorithm_seconds=result.get(
-                    "algorithm_seconds",
-                    duration + result.get("resumed_compute_seconds", 0.0),
-                ),
+                algorithm_seconds=result.get("algorithm_seconds", duration + result.get("resumed_compute_seconds", 0.0)),
                 measured_algorithm_seconds=duration,
                 sparsity=sparsity,
                 N=1 << dimension,
@@ -299,18 +152,10 @@ def execute(job, database, upstream_directory, implementation):
             )
             if spec["kind"] == "robust":
                 bound = tail_bound(signal, sparsity)
-                norm = np.linalg.norm(signal.values)
-                result["error_over_E"] = error * norm / max(bound, 1e-30)
+                result["error_over_E"] = error * np.linalg.norm(signal.values) / max(bound, 1e-30)
                 result["tail_budget"] = bound
             result["wall_seconds"] = time.perf_counter() - started
-    except (
-        BudgetExceeded,
-        MemoryError,
-        RuntimeError,
-        ValueError,
-        AssertionError,
-        TimeoutError,
-    ) as error:
+    except (BudgetExceeded, MemoryError, RuntimeError, ValueError, AssertionError, TimeoutError) as error:
         result = {
             "status": type(error).__name__,
             "message": str(error),
@@ -321,20 +166,12 @@ def execute(job, database, upstream_directory, implementation):
         }
         logging.warning("trial %s %s: %s", method, spec, error)
     result.update(job=job, implementation=implementation)
-    store.finish(key, result)
+    store.finish(trial_key, result)
     store.close()
     logging.info(
         "trial %s status=%s success=%s queries=%s seconds=%.3f",
-        method,
-        result["status"],
-        result.get("success"),
-        result.get("queries"),
-        result.get("wall_seconds", 0),
+        method, result["status"], result.get("success"), result.get("queries"), result.get("wall_seconds", 0),
     )
-    return result["status"]
-
-
-logger = logging.getLogger(__name__)
 
 
 class TimedStore(Store):
@@ -343,23 +180,19 @@ class TimedStore(Store):
         self.io_cpu_seconds = 0.0
         super().__init__(path)
 
-    def get(self, key):
-        started = time.perf_counter()
-        cpu = time.process_time()
+    def timed(self, function, *args):
+        started, cpu = time.perf_counter(), time.process_time()
         try:
-            return super().get(key)
+            return function(*args)
         finally:
             self.io_seconds += time.perf_counter() - started
             self.io_cpu_seconds += time.process_time() - cpu
 
+    def get(self, key):
+        return self.timed(super().get, key)
+
     def put(self, key, value, kind="checkpoint"):
-        started = time.perf_counter()
-        cpu = time.process_time()
-        try:
-            return super().put(key, value, kind)
-        finally:
-            self.io_seconds += time.perf_counter() - started
-            self.io_cpu_seconds += time.process_time() - cpu
+        return self.timed(super().put, key, value, kind)
 
     def save_arrays(self, key, **arrays):
         return None
@@ -374,11 +207,8 @@ class TimedOracle(Oracle):
         self.shape = (2,) * self.dimension
 
     def __call__(self, points):
-        started = time.perf_counter()
-        cpu = time.process_time()
-        packed = np.packbits(
-            np.atleast_2d(np.asarray(points, dtype=np.uint8)), axis=1, bitorder="little"
-        )
+        started, cpu = time.perf_counter(), time.process_time()
+        packed = np.packbits(np.atleast_2d(np.asarray(points, dtype=np.uint8)), axis=1, bitorder="little")
         self.locations.update(row.tobytes() for row in packed)
         try:
             return super().__call__(points)
@@ -402,30 +232,34 @@ def timeout_handler(signum, frame):
     raise TimeoutError("Common trial wall-time limit exceeded")
 
 
+def recover_numerically(oracle, spec, method, settings, store, trial_key, seed, dimension, sparsity, degree, is_graph):
+    if method.startswith("prefix"):
+        return spht.prefix_recover(
+            oracle, dimension, sparsity, settings, store, trial_key, seed + 1709, degree=degree if "bch" in method else None
+        )
+    if method == "cs":
+        rows = cs.sample_count(spec, sparsity, settings["sample_factor"])
+        return cs.recover_spgl1(oracle, dimension, sparsity, rows, settings, seed + 1709, degree, is_graph)
+    raise ValueError(method)
+
+
 def evaluate(job, database, implementation, max_seconds):
     warmup()
     if job["method"] == "cs":
-        cs.prepare()
+        cs.spgl1_solver()
     store = TimedStore(database)
-    key = digest({"job": job, "implementation": implementation})
-    existing = store.get(key)
-    if existing is not None:
+    trial_key = key(job, implementation)
+    if store.get(trial_key) is not None:
         store.close()
-        return existing
+        return
     with store.db:
-        store.db.execute("DELETE FROM records WHERE key LIKE ?", (key + "/%",))
-    spec, settings, method, seed = (
-        job["spec"],
-        job["settings"],
-        job["method"],
-        job["seed"],
-    )
+        store.db.execute("DELETE FROM records WHERE key LIKE ?", (trial_key + "/%",))
+    spec, settings, method, seed = job["spec"], job["settings"], job["method"], job["seed"]
     dimension = spec["dimension"]
     is_graph = spec["kind"].startswith("graph")
     if is_graph:
-        modules = original.load()
-    if is_graph:
-        graph = original.graph(spec)
+        modules = original_code.load()
+        graph = original_code.graph(spec)
         truth = graph_signal(dimension, sorted(graph.graph)).truth()
         function = CutFunction(graph)
         sparsity, degree = len(graph.graph) + 1, 2
@@ -436,23 +270,20 @@ def evaluate(job, database, implementation, max_seconds):
         truth = function.truth()
     preparation = time.perf_counter()
     if method == "prefix_bch":
-        bch_map(dimension, degree)
+        spht.bch_map(dimension, degree)
     if method == "cs" and degree is not None:
-        columns = (
-            1 + dimension * (dimension - 1) // 2
-            if is_graph
-            else sum(math.comb(dimension, j) for j in range(degree + 1))
-        )
+        if is_graph:
+            columns = 1 + dimension * (dimension - 1) // 2
+        else:
+            columns = sum(math.comb(dimension, j) for j in range(degree + 1))
         if columns <= settings["max_global_columns"]:
             cs.dictionary(dimension, degree, is_graph, settings["max_global_columns"])
     bch_precompute_seconds = time.perf_counter() - preparation
-    oracle = TimedOracle(function, dimension, store, key)
+    oracle = TimedOracle(function, dimension, store, trial_key)
     rng_state = np.random.get_state()
     np.random.seed(seed % (2**32))
-    io_started = store.io_seconds
-    io_cpu_started = store.io_cpu_seconds
-    started = time.perf_counter()
-    cpu_started = time.process_time()
+    io_started, io_cpu_started = store.io_seconds, store.io_cpu_seconds
+    started, cpu_started = time.perf_counter(), time.process_time()
     previous_handler = signal.signal(signal.SIGALRM, timeout_handler)
     signal.setitimer(signal.ITIMER_REAL, max_seconds)
     result = {}
@@ -462,49 +293,20 @@ def evaluate(job, database, implementation, max_seconds):
         elif method == "stobbe":
             recovered = stobbe.recover_graph(oracle, dimension, sparsity - 1, settings)
         else:
-            if method.startswith("prefix"):
-                numerical = prefix_recover(
-                    oracle,
-                    dimension,
-                    sparsity,
-                    settings,
-                    store,
-                    key,
-                    seed + 1709,
-                    degree=degree if "bch" in method else None,
-                )
-            elif method == "cs":
-                factor = settings["sample_factor"]
-                rows = cs.sample_count(spec, sparsity, factor)
-                numerical = cs.recover(
-                    oracle,
-                    dimension,
-                    sparsity,
-                    rows,
-                    settings,
-                    store,
-                    key,
-                    seed + 1709,
-                    degree,
-                    is_graph,
-                )
-            else:
-                raise ValueError(method)
+            numerical = recover_numerically(
+                oracle, spec, method, settings, store, trial_key, seed, dimension, sparsity, degree, is_graph
+            )
             result["numerical_status"] = numerical["status"]
             result["solver_report"] = numerical.get("solver_report")
             result["relative_error"] = coefficient_error(truth, numerical)
             if is_graph:
                 recovered = {}
-                for frequency, value in zip(
-                    numerical["frequencies"], numerical["values"]
-                ):
+                for frequency, value in zip(numerical["frequencies"], numerical["values"]):
                     point = np.zeros(dimension, dtype=np.uint8)
                     point[list(frequency)] = 1
                     recovered[tuple(point.tolist())] = float(value)
             else:
-                result["success"] = bool(
-                    result["relative_error"] <= 1e-6 and numerical["status"] == "ok"
-                )
+                result["success"] = bool(result["relative_error"] <= 1e-6 and numerical["status"] == "ok")
                 result["recovered_frequencies"] = numerical["frequencies"]
                 result["recovered_values"] = numerical["values"]
                 result["truth_digest"] = digest(truth)
@@ -512,14 +314,9 @@ def evaluate(job, database, implementation, max_seconds):
             try:
                 estimated = modules.graph.create_from_FT(dimension, dict(recovered))
                 result["success"] = bool(graph == estimated)
-                result["recovered_edges"] = [
-                    [int(a), int(b), float(weight)]
-                    for (a, b), weight in sorted(estimated.graph.items())
-                ]
+                result["recovered_edges"] = [[int(a), int(b), float(w)] for (a, b), w in sorted(estimated.graph.items())]
                 result["truth_digest"] = digest(sorted(graph.graph.items()))
-                result["edge_error"] = graph.reconstError(estimated) / max(
-                    1, len(graph.graph)
-                )
+                result["edge_error"] = graph.reconstError(estimated) / max(1, len(graph.graph))
             except (AssertionError, ValueError):
                 result.update(success=False, edge_error=1.0)
         result["status"] = "ok" if result["success"] else "recovery_failed"
@@ -530,13 +327,8 @@ def evaluate(job, database, implementation, max_seconds):
     except MemoryError as error:
         result.update(status="resource_limit", success=False, message=str(error))
     except Exception as error:
-        logger.exception("Trial implementation error")
-        result.update(
-            status="implementation_error",
-            success=False,
-            message=str(error),
-            traceback=traceback.format_exc(),
-        )
+        logging.exception("Trial implementation error")
+        result.update(status="implementation_error", success=False, message=str(error), traceback=traceback.format_exc())
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
@@ -555,27 +347,16 @@ def evaluate(job, database, implementation, max_seconds):
         oracle_wrapper_seconds=oracle.call_seconds,
         checkpoint_seconds=io_seconds,
         optimizer_wall_seconds=max(1e-9, elapsed - oracle.call_seconds - io_seconds),
-        algorithm_seconds=max(
-            1e-9,
-            cpu_elapsed - oracle.cpu_seconds - (store.io_cpu_seconds - io_cpu_started),
-        ),
+        algorithm_seconds=max(1e-9, cpu_elapsed - oracle.cpu_seconds - (store.io_cpu_seconds - io_cpu_started)),
         runtime_censored=result["status"] in {"timeout", "resource_limit"},
         time_limit=max_seconds,
     )
-    store.finish(key, result)
+    store.finish(trial_key, result)
     store.close()
-    logger.info(
+    logging.info(
         "%s %s n=%s k=%s repeat=%d status=%s queries=%d optimizer=%.3fs wall=%.3fs",
-        job.get("role", "evaluation"),
-        method,
-        dimension,
-        sparsity,
-        job["trial"] + 1,
-        result["status"],
-        result["queries"],
-        result["algorithm_seconds"],
-        elapsed,
+        job["role"], method, dimension, sparsity, job["trial"] + 1, result["status"], result["queries"],
+        result["algorithm_seconds"], elapsed,
     )
     if result["status"] == "implementation_error":
         raise RuntimeError(result["traceback"])
-    return result

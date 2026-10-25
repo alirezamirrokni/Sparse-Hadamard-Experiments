@@ -6,8 +6,7 @@ from functools import lru_cache
 
 import numpy as np
 from numba import njit
-from scipy.optimize import linprog
-from scipy.sparse.linalg import LinearOperator, cg
+from scipy.sparse.linalg import LinearOperator
 
 
 @njit(cache=True)
@@ -68,77 +67,6 @@ def gather_blocks(signs, suffix, values):
     return out
 
 
-def bits(indices, dimension):
-    indices = np.asarray(indices, dtype=np.uint64)
-    return ((indices[:, None] >> np.arange(dimension, dtype=np.uint64)) & 1).astype(
-        np.uint8
-    )
-
-
-def integers(array):
-    array = np.asarray(array, dtype=np.uint8)
-    if array.shape[1] > 63:
-        raise ValueError("Internal bit indices support at most 63 bits")
-    return array.astype(np.uint64) @ (
-        np.uint64(1) << np.arange(array.shape[1], dtype=np.uint64)
-    )
-
-
-def inverse_binary(matrix):
-    matrix = np.asarray(matrix, dtype=np.uint8)
-    n = len(matrix)
-    augmented = np.concatenate([matrix.copy(), np.eye(n, dtype=np.uint8)], axis=1)
-    for j in range(n):
-        options = np.flatnonzero(augmented[j:, j])
-        if not len(options):
-            raise ValueError("Singular binary matrix")
-        pivot = j + options[0]
-        augmented[[j, pivot]] = augmented[[pivot, j]]
-        rows = np.flatnonzero(augmented[:, j])
-        rows = rows[rows != j]
-        augmented[rows] ^= augmented[j]
-    return augmented[:, n:]
-
-
-def random_invertible(dimension, rng):
-    while True:
-        matrix = rng.integers(0, 2, (dimension, dimension), dtype=np.uint8)
-        try:
-            return matrix, inverse_binary(matrix)
-        except ValueError:
-            continue
-
-
-def degree_dictionary(dimension, degree, max_columns=2_000_000):
-    size = sum(math.comb(dimension, d) for d in range(min(dimension, degree) + 1))
-    if size > max_columns:
-        raise MemoryError(
-            f"Degree dictionary has {size:,} columns; limit is {max_columns:,}"
-        )
-    return [
-        tuple(c)
-        for d in range(min(dimension, degree) + 1)
-        for c in itertools.combinations(range(dimension), d)
-    ]
-
-
-def tuple_characters(points, frequencies):
-    points = np.asarray(points, dtype=np.uint8)
-    out = np.ones((len(points), len(frequencies)))
-    for j, frequency in enumerate(frequencies):
-        if frequency:
-            out[:, j] -= 2 * (points[:, frequency].sum(axis=1) % 2)
-    return out
-
-
-def padded_frequencies(frequencies):
-    degree = max((len(f) for f in frequencies), default=0)
-    padded = np.full((len(frequencies), degree), -1, dtype=np.int32)
-    for j, frequency in enumerate(frequencies):
-        padded[j, : len(frequency)] = frequency
-    return padded
-
-
 @njit(cache=True)
 def degree_characters(points, frequencies):
     out = np.ones((len(points), len(frequencies)))
@@ -163,34 +91,6 @@ def evaluate_sparse(points, frequencies, values):
                     parity ^= points[i, coordinate]
             out[i] += (1.0 - 2.0 * parity) * values[j]
     return out
-
-
-def top_indices(values, count):
-    count = min(len(values), count)
-    if count <= 0:
-        return np.empty(0, dtype=int)
-    if count == len(values):
-        return np.arange(len(values))
-    cutoff = np.partition(np.abs(values), len(values) - count)[len(values) - count]
-    above = np.flatnonzero(np.abs(values) > cutoff)
-    tied = np.flatnonzero(np.abs(values) == cutoff)
-    return np.sort(np.concatenate([above, tied[: count - len(above)]]))
-
-
-@lru_cache(maxsize=1)
-def warmup():
-
-    kernel_warmup()
-    fwht(np.zeros(4))
-    characters(np.zeros(2, dtype=np.uint64), np.zeros(2, dtype=np.uint64))
-    scatter_blocks(np.ones((2, 1)), np.zeros(2, dtype=np.int64), np.zeros(2), 2)
-    gather_blocks(np.ones((2, 1)), np.zeros(2, dtype=np.int64), np.zeros((1, 2)))
-    degree_characters(
-        np.zeros((2, 2), dtype=np.uint8), np.zeros((2, 1), dtype=np.int32)
-    )
-    evaluate_sparse(
-        np.zeros((2, 2), dtype=np.uint8), np.zeros((2, 1), dtype=np.int32), np.ones(2)
-    )
 
 
 @njit(cache=True)
@@ -221,25 +121,8 @@ def map_points(indices, matrix):
 
 @njit(cache=True)
 def basis_pursuit_chunk(
-    z,
-    dual,
-    response,
-    signs,
-    suffix,
-    width,
-    scale,
-    orthogonal,
-    inverse,
-    counts,
-    row_order,
-    block_offsets,
-    factor_offsets,
-    ranks,
-    factors,
-    first,
-    stop,
-    tolerance,
-    threshold,
+    z, dual, response, signs, suffix, width, scale, orthogonal, inverse, counts, row_order,
+    block_offsets, factor_offsets, ranks, factors, first, stop, tolerance, threshold,
 ):
     size = len(z)
     rows = len(response)
@@ -280,10 +163,7 @@ def basis_pursuit_chunk(
                 for j in range(rank):
                     value = 0.0
                     for i in range(left, right):
-                        value += (
-                            factors[offset + (i - left) * rank + j]
-                            * residual[row_order[i]]
-                        )
+                        value += factors[offset + (i - left) * rank + j] * residual[row_order[i]]
                     work[j] = value
                 for i in range(left, right):
                     value = 0.0
@@ -293,9 +173,7 @@ def basis_pursuit_chunk(
         correction_bins[:] = 0.0
         for i in range(rows):
             for block in range(blocks):
-                correction_bins[block * width + suffix[i]] += (
-                    signs[i, block] * correction[i]
-                )
+                correction_bins[block * width + suffix[i]] += signs[i, block] * correction[i]
         transform_inplace(correction_bins, width)
         primal = 0.0
         change = 0.0
@@ -332,30 +210,98 @@ def basis_pursuit_chunk(
     return stop, False, feasibility
 
 
-def kernel_warmup():
+@lru_cache(maxsize=1)
+def warmup():
     empty = np.empty(0, dtype=np.int64)
     basis_pursuit_chunk(
-        np.zeros(4),
-        np.zeros(4),
-        np.zeros(2),
-        np.ones((2, 1)),
-        np.array([0, 1]),
-        4,
-        np.sqrt(2.0),
-        True,
-        np.array([0, 1]),
-        np.ones(2, dtype=np.int64),
-        empty,
-        np.zeros(1, dtype=np.int64),
-        np.zeros(1, dtype=np.int64),
-        empty,
-        np.empty(0),
-        0,
-        1,
-        1e-8,
-        0.1,
+        np.zeros(4), np.zeros(4), np.zeros(2), np.ones((2, 1)), np.array([0, 1]), 4, np.sqrt(2.0), True,
+        np.array([0, 1]), np.ones(2, dtype=np.int64), empty, np.zeros(1, dtype=np.int64),
+        np.zeros(1, dtype=np.int64), empty, np.empty(0), 0, 1, 1e-8, 0.1,
     )
     map_points(np.zeros(1, dtype=np.uint64), np.zeros((2, 2), dtype=np.uint8))
+    fwht(np.zeros(4))
+    characters(np.zeros(2, dtype=np.uint64), np.zeros(2, dtype=np.uint64))
+    scatter_blocks(np.ones((2, 1)), np.zeros(2, dtype=np.int64), np.zeros(2), 2)
+    gather_blocks(np.ones((2, 1)), np.zeros(2, dtype=np.int64), np.zeros((1, 2)))
+    degree_characters(np.zeros((2, 2), dtype=np.uint8), np.zeros((2, 1), dtype=np.int32))
+    evaluate_sparse(np.zeros((2, 2), dtype=np.uint8), np.zeros((2, 1), dtype=np.int32), np.ones(2))
+
+
+def bits(indices, dimension):
+    indices = np.asarray(indices, dtype=np.uint64)
+    return ((indices[:, None] >> np.arange(dimension, dtype=np.uint64)) & 1).astype(np.uint8)
+
+
+def integers(array):
+    array = np.asarray(array, dtype=np.uint8)
+    if array.shape[1] > 63:
+        raise ValueError("Internal bit indices support at most 63 bits")
+    return array.astype(np.uint64) @ (np.uint64(1) << np.arange(array.shape[1], dtype=np.uint64))
+
+
+def support(index, dimension):
+    return tuple(np.flatnonzero(bits([index], dimension)[0]).tolist())
+
+
+def inverse_binary(matrix):
+    matrix = np.asarray(matrix, dtype=np.uint8)
+    n = len(matrix)
+    augmented = np.concatenate([matrix.copy(), np.eye(n, dtype=np.uint8)], axis=1)
+    for j in range(n):
+        options = np.flatnonzero(augmented[j:, j])
+        if not len(options):
+            raise ValueError("Singular binary matrix")
+        pivot = j + options[0]
+        augmented[[j, pivot]] = augmented[[pivot, j]]
+        rows = np.flatnonzero(augmented[:, j])
+        rows = rows[rows != j]
+        augmented[rows] ^= augmented[j]
+    return augmented[:, n:]
+
+
+def random_invertible(dimension, rng):
+    while True:
+        matrix = rng.integers(0, 2, (dimension, dimension), dtype=np.uint8)
+        try:
+            return matrix, inverse_binary(matrix)
+        except ValueError:
+            continue
+
+
+def degree_dictionary(dimension, degree, max_columns=2_000_000):
+    size = sum(math.comb(dimension, d) for d in range(min(dimension, degree) + 1))
+    if size > max_columns:
+        raise MemoryError(f"Degree dictionary has {size:,} columns; limit is {max_columns:,}")
+    return [tuple(c) for d in range(min(dimension, degree) + 1) for c in itertools.combinations(range(dimension), d)]
+
+
+def tuple_characters(points, frequencies):
+    points = np.asarray(points, dtype=np.uint8)
+    out = np.ones((len(points), len(frequencies)))
+    for j, frequency in enumerate(frequencies):
+        if frequency:
+            out[:, j] -= 2 * (points[:, frequency].sum(axis=1) % 2)
+    return out
+
+
+def padded_frequencies(frequencies):
+    degree = max((len(f) for f in frequencies), default=0)
+    padded = np.full((len(frequencies), degree), -1, dtype=np.int32)
+    for j, frequency in enumerate(frequencies):
+        padded[j, : len(frequency)] = frequency
+    return padded
+
+
+def top_indices(values, count):
+    count = min(len(values), count)
+    if count <= 0:
+        return np.empty(0, dtype=int)
+    if count == len(values):
+        return np.arange(len(values))
+    cutoff = np.partition(np.abs(values), len(values) - count)[len(values) - count]
+    above = np.flatnonzero(np.abs(values) > cutoff)
+    tied = np.flatnonzero(np.abs(values) == cutoff)
+    return np.sort(np.concatenate([above, tied[: count - len(above)]]))
 
 
 class CosetOperator(LinearOperator):
@@ -363,36 +309,20 @@ class CosetOperator(LinearOperator):
         self.points = np.asarray(points, dtype=np.uint64)
         self.prefixes = np.asarray(prefixes, dtype=np.uint64)
         self.prefix_bits = prefix_bits
-        self.extension_bits = extension_bits
         self.width = 1 << extension_bits
-        self.signs = characters(
-            self.points & np.uint64((1 << prefix_bits) - 1), self.prefixes
-        )
-        self.suffix = (
-            (self.points >> np.uint64(prefix_bits)) & np.uint64(self.width - 1)
-        ).astype(np.int64)
+        self.signs = characters(self.points & np.uint64((1 << prefix_bits) - 1), self.prefixes)
+        self.suffix = ((self.points >> np.uint64(prefix_bits)) & np.uint64(self.width - 1)).astype(np.int64)
         self.scale = np.sqrt(len(points))
-        self.frequencies = (
-            self.prefixes[:, None]
-            | (
-                np.arange(self.width, dtype=np.uint64)[None, :]
-                << np.uint64(prefix_bits)
-            )
-        ).ravel()
-        super().__init__(
-            dtype=np.dtype(float), shape=(len(points), len(self.frequencies))
-        )
+        extensions = np.arange(self.width, dtype=np.uint64)[None, :] << np.uint64(prefix_bits)
+        self.frequencies = (self.prefixes[:, None] | extensions).ravel()
+        super().__init__(dtype=np.dtype(float), shape=(len(points), len(self.frequencies)))
 
     def _matvec(self, vector):
-        transformed = fwht_blocks(
-            np.asarray(vector, dtype=float).reshape(-1, self.width)
-        )
+        transformed = fwht_blocks(np.asarray(vector, dtype=float).reshape(-1, self.width))
         return gather_blocks(self.signs, self.suffix, transformed) / self.scale
 
     def _rmatvec(self, vector):
-        bins = scatter_blocks(
-            self.signs, self.suffix, np.asarray(vector).ravel(), self.width
-        )
+        bins = scatter_blocks(self.signs, self.suffix, np.asarray(vector).ravel(), self.width)
         return fwht_blocks(bins).ravel() / self.scale
 
     def columns(self, indices):
@@ -406,17 +336,12 @@ class CosetOperator(LinearOperator):
             if len(indices) <= signs.shape[1]:
                 gram = (self.width / len(self.points)) * (signs @ signs.T)
                 eigenvalues, eigenvectors = np.linalg.eigh(gram)
-                threshold = max(1e-12, np.max(eigenvalues) * 1e-11)
-                selected = eigenvalues > threshold
+                selected = eigenvalues > max(1e-12, np.max(eigenvalues) * 1e-11)
                 factor = eigenvectors[:, selected] / np.sqrt(eigenvalues[selected])
             else:
-                left, singular, right = np.linalg.svd(signs, full_matrices=False)
+                left, singular, _ = np.linalg.svd(signs, full_matrices=False)
                 selected = singular > max(1e-12, np.max(singular) * 1e-11)
-                factor = (
-                    left[:, selected]
-                    / singular[selected]
-                    * np.sqrt(len(self.points) / self.width)
-                )
+                factor = left[:, selected] / singular[selected] * np.sqrt(len(self.points) / self.width)
             blocks.append((indices, factor))
         return blocks
 
@@ -424,7 +349,6 @@ class CosetOperator(LinearOperator):
 class DegreeOperator(LinearOperator):
     def __init__(self, points, frequencies, chunk=4096, max_cache_bytes=67_108_864):
         self.points = np.asarray(points, dtype=np.uint8)
-        self.frequencies = frequencies
         self.chunk = chunk
         self.scale = np.sqrt(len(points))
         self.padded = padded_frequencies(frequencies)
@@ -440,10 +364,7 @@ class DegreeOperator(LinearOperator):
         result = np.zeros(len(self.points))
         for start in range(0, self.shape[1], self.chunk):
             stop = min(start + self.chunk, self.shape[1])
-            result += (
-                degree_characters(self.points, self.padded[start:stop])
-                @ vector[start:stop]
-            )
+            result += degree_characters(self.points, self.padded[start:stop]) @ vector[start:stop]
         return result / self.scale
 
     def _rmatvec(self, vector):
@@ -452,26 +373,13 @@ class DegreeOperator(LinearOperator):
         result = np.empty(self.shape[1])
         for start in range(0, self.shape[1], self.chunk):
             stop = min(start + self.chunk, self.shape[1])
-            result[start:stop] = (
-                degree_characters(self.points, self.padded[start:stop]).T @ vector
-            )
+            result[start:stop] = degree_characters(self.points, self.padded[start:stop]).T @ vector
         return result / self.scale
 
     def columns(self, indices):
         if self.cached_matrix is not None:
             return self.cached_matrix[:, indices]
         return degree_characters(self.points, self.padded[indices]) / self.scale
-
-
-def materialize(operator, max_bytes):
-    needed = operator.shape[0] * operator.shape[1] * 8
-    if needed > max_bytes:
-        raise MemoryError(
-            f"Dense operator needs {needed:,} bytes, limit is {max_bytes:,}"
-        )
-    if hasattr(operator, "columns"):
-        return operator.columns(np.arange(operator.shape[1]))
-    return np.column_stack([operator @ v for v in np.eye(operator.shape[1])])
 
 
 class InfeasibleSystem(RuntimeError):
@@ -486,8 +394,7 @@ def debias(operator, response, values, count, tolerance=1e-10):
     indices = top_indices(values, count)
     if not len(indices):
         return np.zeros(operator.shape[1])
-    active = operator.columns(indices)
-    fitted = np.linalg.lstsq(active, response, rcond=tolerance)[0]
+    fitted = np.linalg.lstsq(operator.columns(indices), response, rcond=tolerance)[0]
     result = np.zeros(operator.shape[1])
     result[indices] = fitted
     return result
@@ -508,36 +415,17 @@ def spectral_norm_squared(operator):
 
 def solve(operator, response, settings, store=None, key=None, sparsity=None):
     method = settings.get("solver", "bp")
-    max_bytes = int(settings.get("max_dense_bytes", 268_435_456))
+    if method in {"iht", "fista"}:
+        return iterative(operator, response, settings, store, key, sparsity, method == "iht")
+    if method != "bp" or not isinstance(operator, CosetOperator):
+        raise ValueError(f"Unsupported solver {method} for {type(operator).__name__}")
+    return basis_pursuit(operator, response, settings, store, key)
+
+
+def basis_pursuit(operator, response, settings, store, key):
     tolerance = settings.get("tolerance", 1e-8)
     max_iterations = int(settings.get("max_iterations", 6000))
-    if method == "lp":
-        matrix = materialize(operator, max_bytes // 3)
-        result = linprog(
-            np.ones(2 * matrix.shape[1]),
-            A_eq=np.concatenate([matrix, -matrix], axis=1),
-            b_eq=response,
-            bounds=(0, None),
-            method="highs",
-            options={
-                "primal_feasibility_tolerance": 1e-9,
-                "dual_feasibility_tolerance": 1e-9,
-                "time_limit": settings.get("solver_seconds", 1800),
-            },
-        )
-        if not result.success:
-            raise RuntimeError(f"Basis pursuit failed: {result.message}")
-        return result.x[: matrix.shape[1]] - result.x[matrix.shape[1] :], {
-            "solver": "lp",
-            "iterations": result.nit,
-            "converged": True,
-        }
-    if method == "iht":
-        return iterative(operator, response, settings, store, key, sparsity, True)
-    if method == "fista":
-        return iterative(operator, response, settings, store, key, sparsity, False)
-    if method != "bp":
-        raise ValueError(f"Unknown solver {method}")
+    time_limit = settings.get("solver_seconds", 1800)
     m, size = operator.shape
     state = store.load_arrays(key) if store is not None and key else None
     z = np.zeros(size) if state is None else state["z"]
@@ -545,171 +433,52 @@ def solve(operator, response, settings, store=None, key=None, sparsity=None):
     iteration = 0 if state is None else int(state["iteration"])
     elapsed = 0.0 if state is None else float(state["elapsed"])
     started = time.perf_counter()
-    gram = LinearOperator(
-        (m, m), matvec=lambda v: operator @ operator.rmatvec(v), dtype=float
-    )
-    orthogonal = (
-        hasattr(operator, "prefixes")
-        and len(operator.prefixes) == 1
-        and operator.prefix_bits == 0
-    )
-    unique, inverse, counts = (
-        np.unique(operator.points, return_inverse=True, return_counts=True)
-        if orthogonal
-        else (None, None, None)
-    )
-    blocks = (
-        operator.gram_blocks()
-        if hasattr(operator, "gram_blocks") and not orthogonal
-        else None
-    )
-    if blocks is not None:
+    orthogonal = len(operator.prefixes) == 1 and operator.prefix_bits == 0
+    empty = np.empty(0, dtype=np.int64)
+    inverse, counts = empty, empty
+    indices, factors = [], []
+    if orthogonal:
+        _, inverse, counts = np.unique(operator.points, return_inverse=True, return_counts=True)
+    else:
+        blocks = operator.gram_blocks()
         projected = np.zeros(m)
-        for indices, factor in blocks:
-            projected[indices] = factor @ (factor.T @ response[indices])
-        mismatch = np.linalg.norm(gram @ projected - response)
+        for rows, factor in blocks:
+            projected[rows] = factor @ (factor.T @ response[rows])
+            indices.append(rows)
+            factors.append(factor)
+        mismatch = np.linalg.norm(operator @ operator.rmatvec(projected) - response)
         if mismatch > max(1e-9, tolerance * 10) * max(1.0, np.linalg.norm(response)):
-            raise InfeasibleSystem(
-                "Local equality system is infeasible for the retained prefixes"
-            )
-    row_norm_squared = size / m
-    if (
-        hasattr(operator, "suffix")
-        and settings.get("solver_backend", "compiled") == "compiled"
-    ):
-        indices = [] if blocks is None else [block[0] for block in blocks]
-        factors = [] if blocks is None else [block[1] for block in blocks]
-        row_order = np.concatenate(indices) if indices else np.empty(0, dtype=np.int64)
-        block_offsets = np.asarray(
-            [0] + list(np.cumsum([len(x) for x in indices])), dtype=np.int64
-        )
-        factor_offsets = np.asarray(
-            [0] + list(np.cumsum([x.size for x in factors])), dtype=np.int64
-        )
-        ranks = np.asarray([x.shape[1] for x in factors], dtype=np.int64)
-        packed = (
-            np.concatenate([x.ravel() for x in factors]) if factors else np.empty(0)
-        )
-        inverse = np.empty(0, dtype=np.int64) if inverse is None else inverse
-        counts = np.empty(0, dtype=np.int64) if counts is None else counts
-        converged = False
-        checkpoint_started = time.perf_counter()
-        while iteration < max_iterations:
-            if time.perf_counter() - started + elapsed > settings.get(
-                "solver_seconds", 1800
-            ):
-                raise TimeoutError("Basis-pursuit solver time limit exceeded")
-            stop = min(max_iterations, (iteration // 100 + 1) * 100)
-            iteration, converged, feasibility = basis_pursuit_chunk(
-                z,
-                dual,
-                response,
-                operator.signs,
-                operator.suffix,
-                operator.width,
-                operator.scale,
-                orthogonal,
-                inverse,
-                counts,
-                row_order,
-                block_offsets,
-                factor_offsets,
-                ranks,
-                packed,
-                iteration,
-                stop,
-                tolerance,
-                settings.get("threshold", 0.1),
-            )
-            if converged:
-                break
-            if (
-                store is not None
-                and key
-                and time.perf_counter() - checkpoint_started
-                >= settings.get("checkpoint_seconds", 2.0)
-            ):
-                store.save_arrays(
-                    key,
-                    z=z,
-                    dual=dual,
-                    iteration=np.array(iteration),
-                    elapsed=np.array(elapsed + time.perf_counter() - started),
-                )
-                checkpoint_started = time.perf_counter()
-            if iteration % 1000 == 0:
-                logging.info(
-                    "solver %s iteration=%d feasibility=%.3g",
-                    key,
-                    iteration,
-                    feasibility,
-                )
-        return z, {
-            "solver": "bp",
-            "backend": "compiled",
-            "iterations": iteration,
-            "converged": converged,
-            "feasibility": float(np.linalg.norm(operator @ z - response)),
-            "seconds": elapsed + time.perf_counter() - started,
-            "resumed_seconds": elapsed,
-        }
+            raise InfeasibleSystem("Local equality system is infeasible for the retained prefixes")
+    row_order = np.concatenate(indices) if indices else empty
+    block_offsets = np.asarray([0] + list(np.cumsum([len(x) for x in indices])), dtype=np.int64)
+    factor_offsets = np.asarray([0] + list(np.cumsum([x.size for x in factors])), dtype=np.int64)
+    ranks = np.asarray([x.shape[1] for x in factors], dtype=np.int64)
+    packed = np.concatenate([x.ravel() for x in factors]) if factors else np.empty(0)
     converged = False
-    projection_residual = float("inf")
-    for iteration in range(iteration, max_iterations):
-        if time.perf_counter() - started + elapsed > settings.get(
-            "solver_seconds", 1800
-        ):
+    checkpoint_started = time.perf_counter()
+    while iteration < max_iterations:
+        if time.perf_counter() - started + elapsed > time_limit:
             raise TimeoutError("Basis-pursuit solver time limit exceeded")
-        base = z - dual
-        residual = response - operator @ base
-        if orthogonal:
-            sums = np.bincount(inverse, weights=residual)
-            correction = (sums / (row_norm_squared * counts * counts))[inverse]
-        elif blocks is not None:
-            correction = np.zeros(m)
-            for indices, factor in blocks:
-                correction[indices] = factor @ (factor.T @ residual[indices])
-        else:
-            correction, info = cg(
-                gram,
-                residual,
-                rtol=min(1e-9, tolerance * 0.1),
-                atol=1e-12,
-                maxiter=settings.get("projection_iterations", 300),
-            )
-            projection_residual = np.linalg.norm(gram @ correction - residual)
-            if info < 0 or not np.isfinite(projection_residual):
-                raise RuntimeError("Affine projection failed")
-        x = base + operator.rmatvec(correction)
-        old_z = z
-        z = soft(x + dual, settings.get("threshold", 0.1))
-        dual += x - z
-        if iteration % 20 == 0:
-            primal = np.linalg.norm(x - z)
-            change = np.linalg.norm(z - old_z)
-            feasibility = np.linalg.norm(operator @ z - response)
-            scale = max(1.0, np.linalg.norm(response), np.linalg.norm(z))
-            if max(primal, change, feasibility) <= tolerance * scale:
-                converged = True
-                break
-        if store is not None and key and iteration % 100 == 99:
+        stop = min(max_iterations, (iteration // 100 + 1) * 100)
+        iteration, converged, feasibility = basis_pursuit_chunk(
+            z, dual, response, operator.signs, operator.suffix, operator.width, operator.scale, orthogonal,
+            inverse, counts, row_order, block_offsets, factor_offsets, ranks, packed, iteration, stop,
+            tolerance, settings.get("threshold", 0.1),
+        )
+        if converged:
+            break
+        if store is not None and key and time.perf_counter() - checkpoint_started >= 2.0:
             store.save_arrays(
-                key,
-                z=z,
-                dual=dual,
-                iteration=np.array(iteration + 1),
+                key, z=z, dual=dual, iteration=np.array(iteration),
                 elapsed=np.array(elapsed + time.perf_counter() - started),
             )
-        if iteration % 1000 == 999:
-            logging.info(
-                "solver %s iteration=%d feasibility=%.3g",
-                key,
-                iteration + 1,
-                feasibility,
-            )
+            checkpoint_started = time.perf_counter()
+        if iteration % 1000 == 0:
+            logging.info("solver %s iteration=%d feasibility=%.3g", key, iteration, feasibility)
     return z, {
         "solver": "bp",
-        "iterations": iteration + 1,
+        "backend": "compiled",
+        "iterations": iteration,
         "converged": converged,
         "feasibility": float(np.linalg.norm(operator @ z - response)),
         "seconds": elapsed + time.perf_counter() - started,
@@ -731,13 +500,9 @@ def iterative(operator, response, settings, store, key, sparsity, hard):
     tolerance = settings.get("tolerance", 1e-8)
     converged = False
     for iteration in range(start, settings.get("max_iterations", 3000)):
-        if time.perf_counter() - started + elapsed > settings.get(
-            "solver_seconds", 1800
-        ):
+        if time.perf_counter() - started + elapsed > settings.get("solver_seconds", 1800):
             raise TimeoutError("Iterative solver time limit exceeded")
-        proposal = (
-            momentum - operator.rmatvec(operator @ momentum - response) / lipschitz
-        )
+        proposal = momentum - operator.rmatvec(operator @ momentum - response) / lipschitz
         if hard:
             updated = np.zeros(size)
             selected = top_indices(proposal, sparsity)
@@ -754,17 +519,11 @@ def iterative(operator, response, settings, store, key, sparsity, hard):
             break
         if store is not None and key and iteration % 100 == 99:
             store.save_arrays(
-                key,
-                x=x,
-                momentum=momentum,
-                t=np.array(t),
-                iteration=np.array(iteration + 1),
+                key, x=x, momentum=momentum, t=np.array(t), iteration=np.array(iteration + 1),
                 elapsed=np.array(elapsed + time.perf_counter() - started),
             )
         if iteration % 1000 == 999:
-            logging.info(
-                "solver %s iteration=%d change=%.3g", key, iteration + 1, change
-            )
+            logging.info("solver %s iteration=%d change=%.3g", key, iteration + 1, change)
     return x, {
         "solver": "iht" if hard else "fista",
         "iterations": iteration + 1,
@@ -776,24 +535,12 @@ def iterative(operator, response, settings, store, key, sparsity, hard):
 
 
 def sparse_result(frequencies, values, **metadata):
-    return {
-        "frequencies": [[int(j) for j in f] for f in frequencies],
-        "values": [float(v) for v in values],
-        **metadata,
-    }
+    return {"frequencies": [[int(j) for j in f] for f in frequencies], "values": [float(v) for v in values], **metadata}
 
 
 def coefficient_error(truth, recovered):
-    original = {
-        tuple(f): float(v) for f, v in zip(truth["frequencies"], truth["values"])
-    }
-    estimate = {
-        tuple(f): float(v)
-        for f, v in zip(recovered["frequencies"], recovered["values"])
-    }
-    error = sum(
-        (original.get(f, 0.0) - estimate.get(f, 0.0)) ** 2
-        for f in original.keys() | estimate.keys()
-    )
+    original = {tuple(f): float(v) for f, v in zip(truth["frequencies"], truth["values"])}
+    estimate = {tuple(f): float(v) for f, v in zip(recovered["frequencies"], recovered["values"])}
+    error = sum((original.get(f, 0.0) - estimate.get(f, 0.0)) ** 2 for f in original.keys() | estimate.keys())
     norm = sum(v * v for v in original.values())
     return math.sqrt(error / max(norm, 1e-30))
