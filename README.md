@@ -52,7 +52,7 @@ python3.14 -m venv .venv
 .venv-bench/bin/python main.py status
 ```
 
-`start` launches persistent `sht-graphs`, `sht-scaling`, and `sht-phase` tmux sessions. A shared FIFO queue serializes measurements across these suites. Each recovery uses one CPU and one numerical thread. Completed trials, oracle responses, and SPHT stage checkpoints are stored in SQLite. Interrupted graph/scaling trials restart from their fixed seeds for valid runtime measurement; completed trials are skipped.
+`start` launches persistent `sht-graphs`, `sht-scaling`, and `sht-phase` tmux sessions. Graph and scaling measurements share a FIFO queue on one CPU. Phase runs independently on a separate CPU and bypasses that queue, including during figure generation. Each recovery uses one numerical thread. On the current eight-CPU allocation, graph/scaling use CPU 4 and phase uses CPU 7. Completed trials, oracle responses, and SPHT stage checkpoints are stored in SQLite. Interrupted graph/scaling trials restart from their fixed seeds for valid runtime measurement; completed trials are skipped.
 
 ```bash
 tmux attach -t sht-graphs

@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from contextlib import closing
+from contextlib import closing, nullcontext
 from importlib.metadata import version
 from pathlib import Path
 
@@ -199,7 +199,14 @@ def run(output, suite):
         )
         logging.getLogger("fontTools").setLevel(logging.ERROR)
         cpus = sorted(os.sched_getaffinity(0))
-        os.sched_setaffinity(0, {cpus[-min(4, len(cpus))]})
+        cpu = cpus[-1] if suite == "phase" else cpus[-min(4, len(cpus))]
+        os.sched_setaffinity(0, {cpu})
+        logger.info(
+            "%s assigned CPU %d; timing queue %s",
+            suite,
+            cpu,
+            "bypassed" if suite == "phase" else "shared",
+        )
         if suite == "graphs":
             originals.prepare()
         metadata = initialize(output, suite)
@@ -223,12 +230,19 @@ def run(output, suite):
             stage="running",
             expected_trials=len(planned),
             completed_trials=len(finished),
+            execution={
+                "cpu": cpu,
+                "timing_queue": "independent" if suite == "phase" else "shared",
+            },
         )
         store.put("__run__", metadata, kind="metadata")
         store.close()
         logger.info("%s: %d completed, %d pending", suite, len(finished), len(pending))
         for index, job in enumerate(pending, len(finished) + 1):
-            with timing_slot(output / ".runtime"), threadpool_limits(limits=1):
+            with (
+                nullcontext() if suite == "phase" else timing_slot(output / ".runtime"),
+                threadpool_limits(limits=1),
+            ):
                 if suite in {"graphs", "scaling"}:
                     evaluate(
                         job,
@@ -245,7 +259,7 @@ def run(output, suite):
                     )
             logger.info("%s progress=%d/%d", suite, index, len(planned))
         audit(output, suite, planned, metadata)
-        with timing_slot(output / ".runtime"):
+        with nullcontext() if suite == "phase" else timing_slot(output / ".runtime"):
             render(output, suite, configuration(suite), implementation)
         logger.info("%s complete; final PNG and PDF figures saved", suite)
 
@@ -372,7 +386,9 @@ def main():
             if not metadata.get("complete"):
                 print(f"{suite}: incomplete; no partial figure generated")
                 continue
-            with timing_slot(output / ".runtime"):
+            with (
+                nullcontext() if suite == "phase" else timing_slot(output / ".runtime")
+            ):
                 render(output, suite, configuration(suite), metadata["implementation"])
     else:
         for suite in suites:
