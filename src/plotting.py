@@ -218,7 +218,9 @@ def plot_phase(results, config, directory):
                     mesh = axis.pcolormesh(xs, ys, surface, shading="nearest", cmap=cmap, vmin=0, vmax=1, rasterized=True)
                 finite = surface[np.isfinite(surface)]
                 if len(finite) and np.min(finite) < 0.5 < np.max(finite):
-                    axis.contour(xs, ys, surface, levels=[0.5], colors="white", linewidths=2.4)
+                    axis.contour(
+                        xs, ys, surface, levels=[0.5], colors="black" if sparse else "white", linewidths=2.2 if sparse else 2.4
+                    )
                 if not sparse:
                     axis.plot(*dt_curve(), color="black", lw=2.2)
                 axis.set(
@@ -236,7 +238,7 @@ def plot_phase(results, config, directory):
                 if column > 0:
                     axis.tick_params(labelleft=False)
                 if row_index == 0:
-                    axis.set_title(f"N = {2**size:,}\n{distribution.title()}")
+                    axis.set_title(f"N = {2**size:,}" if sparse else f"N = {2**size:,}\n{distribution.title()}")
         figure.colorbar(mesh, ax=axes.ravel().tolist(), label="Recovery probability", shrink=0.9, pad=0.02)
         save_figure(figure, directory, filename)
 

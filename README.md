@@ -43,17 +43,19 @@ Results go to `results/<suite>/cache.sqlite`, which holds every finished trial, 
 
 **Measurement.** Every method gets the same 1,800 s wall-time cap per trial. Queries are unique oracle evaluations and include all validation and retry samples. Runtime is process CPU time minus oracle and cache I/O time, measured after compiled kernels, dictionaries and BCH maps are prepared; BCH preparation time is recorded separately. Graph and scaling cost plots show medians with 95% bootstrap intervals (10,000 draws, resampled within snapshot for graphs), and recovery rates use Wilson intervals.
 
-SPHT settings are fixed per experiment and were not tuned on these evaluations:
+SPHT settings are fixed per experiment:
 
-| Experiment | Initial factor / offset | Extension factor | Sample factor | Validation factor / min | Attempts |
-| --- | --- | ---: | ---: | --- | ---: |
-| Phase, N ≤ 2¹⁰ | 2.0 / 8 | 0.5 | 2.4 | 0 / 0 | 1 |
-| Phase, N ≥ 2¹² | 2.0 / 10 | 0.5 | 2.4 | 0 / 0 | 1 |
-| Graphs (BCH) | 1.5 / 0 | 0.75 | 1.5 | 0.25 / 8 | 2 |
-| Scaling, unrestricted | 2.0 / 8 | 0.5 | 2.4 | 0 / 0 | 1 |
-| Scaling, degree-limited (BCH) | 2.0 / 1 | 1.0 | 2.4 | 0.25 / 8 | 2 |
+| Experiment | Initial factor / offset | Extension factor | Sample factor | Validation factor / min | Attempts | Iteration cap | LS candidates |
+| --- | --- | ---: | ---: | --- | ---: | ---: | ---: |
+| Phase, N ≤ 2¹⁰ | 2.0 / 8 | 0.5 | 2.4 | 0 / 0 | 1 | 6,000 | k |
+| Phase, N ≥ 2¹² | 2.0 / 10 | 0.5 | 2.4 | 0 / 0 | 1 | 6,000 | k |
+| Graphs (BCH) | 1.5 / 0 | 0.75 | 1.5 | 0.25 / 8 | 2 | 6,000 | k |
+| Scaling, unrestricted | 1.0 / 6 | 1.5 | 0.8 | 0 / 5 | 6 | 300 | 1.5k |
+| Scaling, degree-limited (BCH) | 2.0 / 1 | 0.75 | 0.8 | 0 / 2 | 6 | 300 | 1.5k |
 
-At least one validation query is always reserved. Unrestricted SPHT reuses samples across prefix stages.
+At least one validation query is always reserved, and samples are reused across prefix stages. A stage that fails validation draws a fresh batch of samples and refits on all samples collected so far, so a small sample factor with several attempts spends queries adaptively. The iteration cap bounds each ADMM solve, so an under-sampled attempt fails fast instead of running to the 6,000-iteration evaluation limit. With 1.5k least-squares candidates, the stage fit uses the top-k ADMM coefficients plus the columns most correlated with the ADMM residual, then refits on the top k. This recovers coefficients that ADMM leaves at zero.
+
+The scaling settings were tuned on a separate seed split (`tuning-v1`, 20 repetitions per configuration, disjoint from the evaluation seeds) by choosing the setting with no recovery failures and the fewest queries relative to CS. CS keeps its sample factor of 2.4. The phase and graph settings were not tuned.
 
 ## Results
 
@@ -61,7 +63,7 @@ Scaling is complete (560 trials). Exact recovery rates:
 
 | Signal class | CS | SPHT |
 | --- | ---: | ---: |
-| Unrestricted, n ≤ 20 | 100/100 | 90/100 |
+| Unrestricted, n ≤ 20 | 100/100 | 100/100 |
 | Degree 2, n ≤ 800 | 90/90 | 90/90 |
 | Degree 3, n ≤ 800 | 58/90 (30 over the 2M-column limit, 2 timeouts) | 90/90 |
 
@@ -69,12 +71,17 @@ Geometric-mean CPU speedup of SPHT over CS on jointly successful pairs, with SPH
 
 | | n = 30 | n = 60 | n = 100 | n = 200 | n = 400 | n = 800 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| d = 2, k = 8 | 4.5× (1.39) | 3.8× (1.47) | 7.6× (1.38) | 34× (1.41) | 178× (1.32) | 1,022× (1.35) |
-| d = 2, k = 32 | 3.2× (1.33) | 3.0× (1.33) | 6.5× (1.27) | 43× (1.22) | 153× (1.23) | 671× (1.16) |
-| d = 3, k = 8 | 6.0× (1.52) | 95× (1.43) | 439× (1.50) | 3,739× (1.46) | — | — |
-| d = 3, k = 32 | 4.6× (1.44) | 63× (1.37) | 307× (1.33) | 11,934× (1.31) | — | — |
+| d = 2, k = 8 | 2.2× (0.90) | 3.3× (0.89) | 6.1× (1.02) | 32× (0.89) | 102× (0.90) | 503× (0.87) |
+| d = 2, k = 32 | 1.3× (0.87) | 1.9× (0.87) | 3.6× (0.84) | 26× (0.80) | 104× (0.77) | 457× (0.74) |
+| d = 3, k = 8 | 3.1× (1.07) | 52× (0.99) | 360× (0.90) | 2,960× (0.95) | — | — |
+| d = 3, k = 32 | 2.4× (0.94) | 41× (0.85) | 187× (0.85) | 7,610× (0.84) | — | — |
 
-For unrestricted signals with k = 4, the speedup grows from 0.5× at N = 2¹² to 216× at N = 2²⁰ with at most 7% more queries; at k = 8 it reaches 36× at N = 2²⁰. At k = 32, CS is as fast or faster at these sizes (0.2–1.5×). Per-configuration values are in `results/scaling/paired-comparisons.csv`.
+| | N = 2¹² | N = 2¹⁴ | N = 2¹⁶ | N = 2¹⁸ | N = 2²⁰ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Unrestricted, k = 4 | 6.0× (0.96) | 27× (1.01) | 76× (0.94) | 620× (0.87) | 1,790× (0.91) |
+| Unrestricted, k = 32 | 0.95× (0.78) | 6.4× (0.69) | 25× (0.68) | 72× (0.68) | 104× (0.82) |
+
+SPHT uses fewer queries than CS in 47 of 50 configurations. The three exceptions (ratios 1.01–1.07) have 95% intervals that include 1, as does the one runtime ratio below 1 (k = 32, N = 2¹²: 0.44–1.63×). Per-configuration values are in `results/scaling/paired-comparisons.csv`. The untuned scaling run is kept in `results/archive/scaling-untuned.sqlite`.
 
 The phase and graph suites are still running, and robustness and HPO are deferred.
 

@@ -77,7 +77,10 @@ def evaluation_settings(job, policy):
         settings.pop("max_iterations", None)
         settings.pop("threshold", None)
     else:
-        settings.update(max_iterations=policy["max_iterations"], tolerance=policy["tolerance"])
+        settings.update(
+            max_iterations=min(settings.get("max_iterations", policy["max_iterations"]), policy["max_iterations"]),
+            tolerance=policy["tolerance"],
+        )
     if job["method"] in {"stobbe", "swht"}:
         published = original_code.published_setting(job["spec"], job["method"])
         settings.update(published["settings"])

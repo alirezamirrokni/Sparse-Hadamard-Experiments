@@ -285,6 +285,11 @@ def run_stage(
                 oracle, query_map, operator, response, values, prefixes, old_length, length, sparsity, keep, settings, rng
             )
         else:
+            candidates = min(columns, len(fitting_rows), math.ceil(settings.get("debias_factor", 1) * sparsity))
+            if candidates > sparsity:
+                scores = np.abs(operator.rmatvec(response - operator @ values))
+                scores[top_indices(values, sparsity)] = np.inf
+                values = debias(operator, response, scores, candidates)
             values = debias(operator, response, values, sparsity)
             selected = top_indices(values, sparsity)
             threshold = settings.get("coefficient_threshold", 1e-8) * max(1.0, np.max(np.abs(values), initial=0))

@@ -18,6 +18,7 @@ SPHT_UNRESTRICTED = {
     "validated": True, "validation_factor": 0, "validation_min": 0, "attempts": 1, "sampling": "distinct",
     "reuse_samples": True, "threshold": 0.1, "tolerance": 1e-06,
 }
+SPHT_TUNED = {"sample_factor": 0.8, "attempts": 6, "validation_factor": 0, "max_iterations": 300, "debias_factor": 1.5}
 
 CONFIG = {
     "suites": {
@@ -62,11 +63,13 @@ CONFIG = {
             "defaults": EXACT,
             "methods": {
                 "cs": SPGL1,
-                "prefix": SPHT_UNRESTRICTED,
+                "prefix": {
+                    **SPHT_UNRESTRICTED, **SPHT_TUNED,
+                    "initial_factor": 1.0, "initial_offset": 6, "extension_factor": 1.5, "validation_min": 5,
+                },
                 "prefix_bch": {
-                    "solver": "bp", "initial_factor": 2.0, "initial_offset": 1, "extension_factor": 1.0,
-                    "sample_factor": 2.4, "validated": True, "validation_factor": 0.25, "validation_min": 8,
-                    "attempts": 2, "sampling": "distinct",
+                    "solver": "bp", "initial_factor": 2.0, "initial_offset": 1, "extension_factor": 0.75,
+                    "validated": True, "validation_min": 2, "sampling": "distinct", **SPHT_TUNED,
                 },
             },
             "experiments": [
